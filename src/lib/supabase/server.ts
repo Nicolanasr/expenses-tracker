@@ -14,19 +14,61 @@ export type Database = {
 					color: string | null;
 					created_at: string;
 				};
+				Insert: {
+					id?: string;
+					name: string;
+					type: "income" | "expense";
+					icon?: string;
+					user_id: string;
+					color?: string | null;
+					created_at?: string;
+				};
+				Update: {
+					id?: string;
+					name?: string;
+					type?: "income" | "expense";
+					icon?: string;
+					user_id?: string;
+					color?: string | null;
+					created_at?: string;
+				};
+				Relationships: [];
 			};
 			transactions: {
 				Row: {
 					id: string;
 					amount: number;
 					type: "income" | "expense";
-					category_id: string;
+					category_id: string | null;
 					user_id: string;
 					occurred_on: string;
 					payment_method: "cash" | "card" | "transfer" | "other";
 					notes: string | null;
 					created_at: string;
 				};
+				Insert: {
+					id?: string;
+					amount: number;
+					type: "income" | "expense";
+					category_id: string | null;
+					user_id: string;
+					occurred_on: string;
+					payment_method: "cash" | "card" | "transfer" | "other";
+					notes?: string | null;
+					created_at?: string;
+				};
+				Update: {
+					id?: string;
+					amount?: number;
+					type?: "income" | "expense";
+					category_id?: string | null;
+					user_id?: string;
+					occurred_on?: string;
+					payment_method?: "cash" | "card" | "transfer" | "other";
+					notes?: string | null;
+					created_at?: string;
+				};
+				Relationships: [];
 			};
 		};
 		Views: Record<string, never>;

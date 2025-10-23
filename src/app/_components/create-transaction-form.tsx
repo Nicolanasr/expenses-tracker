@@ -251,15 +251,13 @@ export function CreateTransactionForm({ categories }: Props) {
                                     type="button"
                                     onClick={() => setActiveType(tab.value)}
                                     disabled={!tab.count}
-                                    className={`rounded-full px-3 py-1 transition ${
-                                        isActive
-                                            ? 'bg-white text-slate-900 shadow-sm'
-                                            : 'hover:text-slate-700'
-                                    } ${
-                                        !tab.count
+                                    className={`rounded-full px-3 py-1 transition ${isActive
+                                        ? 'bg-white text-slate-900 shadow-sm'
+                                        : 'hover:text-slate-700'
+                                        } ${!tab.count
                                             ? 'cursor-not-allowed opacity-40'
                                             : ''
-                                    }`}
+                                        }`}
                                 >
                                     {tab.label}
                                     <span className="ml-1 text-[11px] text-slate-400">
@@ -302,16 +300,15 @@ export function CreateTransactionForm({ categories }: Props) {
                                         required={shouldRequire}
                                     />
                                     <span
-                                        className={`flex h-full items-center gap-3 rounded-xl border p-3 text-sm font-semibold shadow-sm transition ${
-                                            isSelected
-                                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                                : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 hover:text-indigo-600'
-                                        }`}
+                                        className={`flex h-full items-center gap-3 rounded-xl border p-3 text-sm font-semibold shadow-sm transition ${isSelected
+                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                                            : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-300 hover:text-indigo-600'
+                                            }`}
                                     >
                                         <span className="text-lg" aria-hidden>
                                             {icon}
                                         </span>
-                                        <span className="truncate">
+                                        <span className="text-xs">
                                             {category.name}
                                         </span>
                                     </span>

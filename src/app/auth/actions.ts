@@ -17,8 +17,8 @@ export type AuthFormState = {
 const EMPTY_STATE: AuthFormState = { ok: false, errors: {} };
 
 const credentialsSchema = z.object({
-	email: z.string({ required_error: "Email is required" }).email("Enter a valid email"),
-	password: z.string({ required_error: "Password is required" }).min(6, "Use at least 6 characters"),
+	email: z.string({ error: "Email is required" }).email("Enter a valid email"),
+	password: z.string({ error: "Password is required" }).min(6, "Use at least 6 characters"),
 });
 
 export async function signIn(_prevState: AuthFormState, formData: FormData): Promise<AuthFormState> {
