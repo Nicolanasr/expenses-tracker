@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { redirect } from 'next/navigation';
 
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
@@ -56,6 +55,22 @@ type NormalizedTransaction = {
 const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+const CURRENCY = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});
+
+function formatCurrency(value: number) {
+  return CURRENCY.format(Math.round(value));
+}
+
+const MS_IN_DAY = 1000 * 60 * 60 * 24;
+
+function inclusiveDayDiff(start: Date, end: Date) {
+  const diff = Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY);
+  return diff >= 0 ? diff + 1 : 0;
+}
+
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (PAYMENT_METHODS as readonly string[]).includes(value);
 }
@@ -94,11 +109,36 @@ function getWeekStart(date: Date) {
     return copy;
 }
 
+function toISODate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 function formatWeekLabel(start: Date) {
     return new Intl.DateTimeFormat('en-US', {
         month: 'short',
         day: 'numeric',
     }).format(start);
+}
+
+function normalizeTransactions(rows: TransactionRow[]): NormalizedTransaction[] {
+  return rows.map((transaction) => ({
+    id: transaction.id,
+    amount: Number(transaction.amount ?? 0),
+    type: transaction.type,
+    occurredOn: transaction.occurred_on,
+    paymentMethod: transaction.payment_method,
+    notes: transaction.notes,
+    categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
+    category: transaction.categories
+      ? {
+          id: transaction.categories.id,
+          name: transaction.categories.name,
+          icon: transaction.categories.icon,
+          color: transaction.categories.color,
+          type: transaction.categories.type,
+        }
+      : null,
+  }));
 }
 
 function computeTimeline(
@@ -212,6 +252,47 @@ function computeCategoryBreakdown(transactions: NormalizedTransaction[]) {
     return result;
 }
 
+function computeExpenseTotalsByCategory(transactions: NormalizedTransaction[]) {
+  const totals = new Map<
+    string,
+    { id: string; name: string; amount: number; color: string | null }
+  >();
+
+  transactions
+    .filter((transaction) => transaction.type === 'expense')
+    .forEach((transaction) => {
+      const key = transaction.category?.id ?? '__uncategorised__';
+      if (!totals.has(key)) {
+        totals.set(key, {
+          id: key,
+          name: transaction.category?.name ?? 'Uncategorised',
+          amount: 0,
+          color: transaction.category?.color ?? '#94a3b8',
+        });
+      }
+      totals.get(key)!.amount += transaction.amount;
+    });
+
+  return totals;
+}
+
+function getPreviousRange(startISO: string, endISO: string) {
+  const startDate = new Date(startISO);
+  const endDate = new Date(endISO);
+  const totalDays = Math.max(1, inclusiveDayDiff(startDate, endDate));
+
+  const previousEnd = new Date(startDate);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - (totalDays - 1));
+
+  return {
+    start: toISODate(previousStart),
+    end: toISODate(previousEnd),
+  };
+}
+
 export default async function OverviewPage({ searchParams }: PageProps) {
   const supabase = await createSupabaseServerComponentClient();
   const {
@@ -245,17 +326,11 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         ? 'day'
         : 'month';
 
-  const [categoriesResponse, transactionsResponse] = await Promise.all([
-    supabase
-      .from('categories')
-      .select('id, name, type, icon, color')
-      .eq('user_id', user.id)
-      .order('name', { ascending: true }),
-        (() => {
-            let query = supabase
-                .from('transactions')
-                .select(
-                    `
+  const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
+    let query = supabase
+      .from('transactions')
+      .select(
+        `
         id,
         amount,
         type,
@@ -265,72 +340,76 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         category_id,
         categories (id, name, type, icon, color)
       `,
-                )
-                .eq('user_id', user.id)
-                .order('occurred_on', { ascending: false });
+      )
+      .eq('user_id', user.id)
+      .gte('occurred_on', rangeStart)
+      .lte('occurred_on', rangeEnd);
 
-      query = query.gte('occurred_on', start).lte('occurred_on', end);
-            if (categoryId) {
-                query = query.eq('category_id', categoryId);
-            }
-            if (paymentMethod && isPaymentMethod(paymentMethod)) {
-                query = query.eq('payment_method', paymentMethod);
-            }
-            if (search && search.trim().length > 0) {
-                const term = `%${search.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
-                query = query.or(
-                    `notes.ilike.${term},categories.name.ilike.${term}`,
-                );
-            }
-
-            return query;
-        })(),
-    ]);
-
-    if (categoriesResponse.error) {
-        throw categoriesResponse.error;
+    if (categoryId) {
+      query = query.eq('category_id', categoryId);
     }
-    if (transactionsResponse.error) {
-        throw transactionsResponse.error;
+    if (paymentMethod && isPaymentMethod(paymentMethod)) {
+      query = query.eq('payment_method', paymentMethod);
+    }
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+      query = query.or(`notes.ilike.${term},categories.name.ilike.${term}`);
     }
 
-    const categories = categoriesResponse.data ?? [];
-    const transactions: TransactionRow[] = transactionsResponse.data ?? [];
+    return query.order('occurred_on', { ascending: false });
+  };
 
-    const categoryOptionsForFilters = categories.map((category: any) => ({
-        id: category.id,
-        name: category.name,
-        type: category.type,
-    }));
+  const { start: previousStart, end: previousEnd } = getPreviousRange(
+    start,
+    end,
+  );
 
-    const categoryOptionsForEditing = categories.map((category: any) => ({
-        id: category.id,
-        name: category.name,
-        icon: category.icon,
-        color: category.color,
-        type: category.type,
-    }));
+  const [
+    categoriesResponse,
+    currentTransactionsResponse,
+    previousTransactionsResponse,
+  ] = await Promise.all([
+    supabase
+      .from('categories')
+      .select('id, name, type, icon, color')
+      .eq('user_id', user.id)
+      .order('name', { ascending: true }),
+    buildTransactionsQuery(start, end),
+    buildTransactionsQuery(previousStart, previousEnd),
+  ]);
 
-    const normalizedTransactions: NormalizedTransaction[] = transactions.map(
-        (transaction) => ({
-            id: transaction.id,
-            amount: Number(transaction.amount ?? 0),
-            type: transaction.type,
-            occurredOn: transaction.occurred_on,
-            paymentMethod: transaction.payment_method,
-            notes: transaction.notes,
-            categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
-            category: transaction.categories
-                ? {
-                    id: transaction.categories.id,
-                    name: transaction.categories.name,
-                    icon: transaction.categories.icon,
-                    color: transaction.categories.color,
-                    type: transaction.categories.type,
-                }
-                : null,
-        }),
-    );
+  if (categoriesResponse.error) {
+    throw categoriesResponse.error;
+  }
+  if (currentTransactionsResponse.error) {
+    throw currentTransactionsResponse.error;
+  }
+  if (previousTransactionsResponse.error) {
+    throw previousTransactionsResponse.error;
+  }
+
+  const categories = (categoriesResponse.data ?? []) as CategoryRow[];
+  const transactions: TransactionRow[] =
+    (currentTransactionsResponse.data ?? []) as TransactionRow[];
+  const previousTransactions: TransactionRow[] =
+    (previousTransactionsResponse.data ?? []) as TransactionRow[];
+
+  const categoryOptionsForFilters = categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+    type: category.type,
+  }));
+
+  const categoryOptionsForEditing = categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+    icon: category.icon,
+    color: category.color,
+    type: category.type,
+  }));
+
+  const normalizedTransactions = normalizeTransactions(transactions);
+  const previousNormalizedTransactions = normalizeTransactions(previousTransactions);
 
     const totalIncome = normalizedTransactions
         .filter((transaction) => transaction.type === 'income')
@@ -340,12 +419,91 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         .reduce((sum, transaction) => sum + transaction.amount, 0);
     const balance = totalIncome - totalExpenses;
 
-    const timelinePoints = computeTimeline(
-        normalizedTransactions,
-        summaryInterval,
+  const timelinePoints = computeTimeline(
+    normalizedTransactions,
+    summaryInterval,
+  );
+  const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
+  const latestTransactions = normalizedTransactions.slice(0, 8);
+
+  const currentExpenseTotals = computeExpenseTotalsByCategory(
+    normalizedTransactions,
+  );
+  const previousExpenseTotals = computeExpenseTotalsByCategory(
+    previousNormalizedTransactions,
+  );
+
+  const insights: string[] = [];
+
+  const categoryChanges = Array.from(currentExpenseTotals.values())
+    .map((current) => {
+      const previousAmount = previousExpenseTotals.get(current.id)?.amount ?? 0;
+      const diff = current.amount - previousAmount;
+      const ratio = previousAmount > 0 ? diff / previousAmount : Infinity;
+      return {
+        id: current.id,
+        name: current.name,
+        diff,
+        ratio,
+        current: current.amount,
+        previous: previousAmount,
+      };
+    })
+    .filter((entry) => entry.diff > 0 && entry.current > 25)
+    .sort((a, b) => {
+      const ratioDiff = (b.ratio === Infinity ? 999 : b.ratio) - (a.ratio === Infinity ? 999 : a.ratio);
+      if (ratioDiff !== 0) {
+        return ratioDiff;
+      }
+      return b.diff - a.diff;
+    })
+    .slice(0, 3);
+
+  categoryChanges.forEach((entry) => {
+    if (entry.ratio === Infinity) {
+      insights.push(
+        `${entry.name} is a new expense this period at ${formatCurrency(entry.current)}.`,
+      );
+    } else if (entry.ratio >= 0.15) {
+      insights.push(
+        `${entry.name} spending increased by ${Math.round(entry.ratio * 100)}% (${formatCurrency(entry.previous)} → ${formatCurrency(entry.current)}).`,
+      );
+    }
+  });
+
+  if (categoryBreakdown.length) {
+    const topCategory = categoryBreakdown[0];
+    insights.push(
+      `${topCategory.label} is your top spending category this period at ${formatCurrency(topCategory.amount)}.`,
     );
-    const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
-    const latestTransactions = normalizedTransactions.slice(0, 8);
+  }
+
+  if (totalIncome > 0) {
+    const ratio = totalExpenses / totalIncome;
+    if (ratio >= 0.9) {
+      insights.push(
+        `Expenses account for ${Math.round(ratio * 100)}% of your income. Consider reducing discretionary spending.`,
+      );
+    }
+  }
+
+  const rangeStartDate = new Date(start);
+  const rangeEndDate = new Date(end);
+  const totalPeriodDays = Math.max(1, inclusiveDayDiff(rangeStartDate, rangeEndDate));
+  const todayDate = new Date();
+  const observedEnd = todayDate < rangeEndDate ? todayDate : rangeEndDate;
+  const observedDays = Math.max(1, inclusiveDayDiff(rangeStartDate, observedEnd));
+
+  if (observedDays < totalPeriodDays && totalExpenses > 0) {
+    const projectedExpenses = (totalExpenses / observedDays) * totalPeriodDays;
+    if (projectedExpenses > totalExpenses + 50) {
+      insights.push(
+        `At the current pace you may spend about ${formatCurrency(
+          projectedExpenses,
+        )} on expenses this period (currently ${formatCurrency(totalExpenses)}).`,
+      );
+    }
+  }
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -364,12 +522,28 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     summaryInterval={summaryInterval}
                 />
 
-                <DashboardSummaryCards
-                    totalIncome={totalIncome}
-                    totalExpenses={totalExpenses}
-                    balance={balance}
-                    transactionCount={normalizedTransactions.length}
-                />
+        <DashboardSummaryCards
+          totalIncome={totalIncome}
+          totalExpenses={totalExpenses}
+          balance={balance}
+          transactionCount={normalizedTransactions.length}
+        />
+
+        {insights.length ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-base font-semibold text-slate-900">
+              Smart insights
+            </h2>
+            <ul className="mt-2 space-y-2 text-sm text-slate-700">
+              {insights.map((insight, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                  <span>{insight}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
                 <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
                     <SummaryChart interval={summaryInterval} points={timelinePoints} />
