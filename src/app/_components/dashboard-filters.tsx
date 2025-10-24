@@ -24,7 +24,7 @@ type DashboardFiltersProps = {
     paymentMethod?: string;
     search?: string;
   };
-  summaryInterval: 'month' | 'week';
+  summaryInterval: 'month' | 'week' | 'day';
 };
 
 const PAYMENT_METHOD_LABELS = {
@@ -79,6 +79,7 @@ export function DashboardFilters({
   const pathname = usePathname();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [expanded, setExpanded] = useState(false);
 
   const [startDate, setStartDate] = useState(initialFilters.start ?? '');
   const [endDate, setEndDate] = useState(initialFilters.end ?? '');
@@ -90,6 +91,14 @@ export function DashboardFilters({
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
+      if (!initialFilters.start || !initialFilters.end) {
+        const [presetStart, presetEnd] = presets[0].getRange();
+        setStartDate(toInputValue(presetStart));
+        setEndDate(toInputValue(presetEnd));
+        setExpanded(false);
+        return;
+      }
+
       setStartDate(initialFilters.start ?? '');
       setEndDate(initialFilters.end ?? '');
       setCategoryId(initialFilters.categoryId ?? '');
@@ -144,18 +153,19 @@ export function DashboardFilters({
   ]);
 
   const handleReset = useCallback(() => {
-    setStartDate('');
-    setEndDate('');
-    setCategoryId('');
-    setPaymentMethod('');
-    setSearch('');
-
     const next = new URLSearchParams(searchParams.toString());
     next.delete('start');
     next.delete('end');
     next.delete('category');
     next.delete('payment');
     next.delete('search');
+
+    const [presetStart, presetEnd] = presets[0].getRange();
+    setStartDate(toInputValue(presetStart));
+    setEndDate(toInputValue(presetEnd));
+    setCategoryId('');
+    setPaymentMethod('');
+    setSearch('');
 
     const queryString = next.toString();
     startTransition(() => {
@@ -166,7 +176,7 @@ export function DashboardFilters({
   }, [pathname, router, searchParams]);
 
   const handleIntervalChange = useCallback(
-    (value: 'month' | 'week') => {
+    (value: 'month' | 'week' | 'day') => {
       const next = new URLSearchParams(searchParams.toString());
       next.set('interval', value);
       const queryString = next.toString();
@@ -180,180 +190,210 @@ export function DashboardFilters({
   );
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-semibold text-slate-900">Filters</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Filters</h2>
+            <p className="text-sm text-slate-500">
+              Narrow your view by time range, category, method, or keywords.
+            </p>
+          </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleIntervalChange('month')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                summaryInterval === 'month'
-                  ? 'bg-indigo-100 text-indigo-600'
-                  : 'border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              type="button"
-              onClick={() => handleIntervalChange('week')}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                summaryInterval === 'week'
-                  ? 'bg-indigo-100 text-indigo-600'
-                  : 'border border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-              }`}
-            >
-              Weekly
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="grid gap-2">
-            <label htmlFor="start" className="text-sm font-semibold text-slate-800">
-              Start date
-            </label>
-            <input
-              id="start"
-              name="start"
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-            />
-            <div className="flex flex-wrap gap-2 pt-1 text-xs text-slate-600">
-              {presets.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  className="rounded-full border border-slate-200 px-2 py-1 transition hover:border-indigo-200 hover:text-indigo-600"
-                  onClick={() => {
-                    const [presetStart, presetEnd] = preset.getRange();
-                    setStartDate(toInputValue(presetStart));
-                    setEndDate(toInputValue(presetEnd));
-                  }}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <label htmlFor="end" className="text-sm font-semibold text-slate-800">
-              End date
-            </label>
-            <input
-              id="end"
-              name="end"
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-            />
-          </div>
-          <div className="grid gap-2">
-            <label className="text-sm font-semibold text-slate-800">Category</label>
-            <select
-              name="categoryId"
-              value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-            >
-              <option value="">All categories</option>
-              {categoryOptions.expense.length ? (
-                <optgroup label="Expenses">
-                  {categoryOptions.expense.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {categoryOptions.income.length ? (
-                <optgroup label="Income">
-                  {categoryOptions.income.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </div>
-          <div className="grid gap-2">
-            <p className="text-sm font-semibold text-slate-800">Payment method</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="inline-flex items-center rounded-full bg-slate-100 p-1 text-xs font-semibold text-slate-500">
               <button
                 type="button"
-                onClick={() => setPaymentMethod('')}
-                className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
-                  paymentMethod === ''
-                    ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                    : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                onClick={() => handleIntervalChange('month')}
+                className={`rounded-full px-3 py-1 transition ${
+                  summaryInterval === 'month'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'hover:text-slate-700'
                 }`}
               >
-                All methods
+                Monthly
               </button>
-              {(Object.entries(
-                PAYMENT_METHOD_LABELS,
-              ) as Array<[PaymentMethodValue, string]>).map(([value, label]) => {
-                const isActive = paymentMethod === value;
-                return (
-                  <button
-                    type="button"
-                    key={value}
-                    onClick={() => setPaymentMethod(value)}
-                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
-                      isActive
-                        ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                        : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                onClick={() => handleIntervalChange('week')}
+                className={`rounded-full px-3 py-1 transition ${
+                  summaryInterval === 'week'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'hover:text-slate-700'
+                }`}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                onClick={() => handleIntervalChange('day')}
+                className={`rounded-full px-3 py-1 transition ${
+                  summaryInterval === 'day'
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'hover:text-slate-700'
+                }`}
+              >
+                Daily
+              </button>
             </div>
-          </div>
-          <div className="grid gap-2 sm:col-span-2 lg:col-span-3">
-            <label className="text-sm font-semibold text-slate-800">Search</label>
-            <input
-              name="search"
-              type="search"
-              placeholder="Search notes or category name"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  applyFilters();
-                }
-              }}
-              className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-            />
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => !prev)}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+            >
+              {expanded ? 'Hide filters' : 'Show filters'}
+              <span className="text-xs font-medium text-slate-400">
+                {expanded ? '−' : '+'}
+              </span>
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
-            disabled={pending}
-          >
-            Clear filters
-          </button>
-          <button
-            type="button"
-            onClick={applyFilters}
-            className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={pending}
-          >
-            {pending ? 'Updating…' : 'Apply filters'}
-          </button>
-        </div>
+        {expanded ? (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-2">
+                <p className="text-sm font-semibold text-slate-900">Date range</p>
+                <div className="flex gap-2">
+                  <input
+                    id="start"
+                    name="start"
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className="h-11 flex-1 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                  />
+                  <input
+                    id="end"
+                    name="end"
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className="h-11 flex-1 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600"
+                      onClick={() => {
+                        const [presetStart, presetEnd] = preset.getRange();
+                        setStartDate(toInputValue(presetStart));
+                        setEndDate(toInputValue(presetEnd));
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <p className="text-sm font-semibold text-slate-900">Category</p>
+                <select
+                  name="categoryId"
+                  value={categoryId}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                  className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                >
+                  <option value="">All categories</option>
+                  {categoryOptions.expense.length ? (
+                    <optgroup label="Expenses">
+                      {categoryOptions.expense.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {categoryOptions.income.length ? (
+                    <optgroup label="Income">
+                      {categoryOptions.income.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                </select>
+              </div>
+
+              <div className="grid gap-2">
+                <p className="text-sm font-semibold text-slate-900">Payment method</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('')}
+                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
+                      paymentMethod === ''
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                        : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
+                    }`}
+                  >
+                    All methods
+                  </button>
+                  {(Object.entries(
+                    PAYMENT_METHOD_LABELS,
+                  ) as Array<[PaymentMethodValue, string]>).map(([value, label]) => {
+                    const isActive = paymentMethod === value;
+                    return (
+                      <button
+                        type="button"
+                        key={value}
+                        onClick={() => setPaymentMethod(value)}
+                        className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
+                          isActive
+                            ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                            : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:col-span-2 lg:col-span-3">
+                <p className="text-sm font-semibold text-slate-900">Search</p>
+                <input
+                  name="search"
+                  type="search"
+                  placeholder="Search notes or category name"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      applyFilters();
+                    }
+                  }}
+                  className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleReset}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                disabled={pending}
+              >
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={applyFilters}
+                className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-70"
+                disabled={pending}
+              >
+                {pending ? 'Updating…' : 'Apply filters'}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

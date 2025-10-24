@@ -47,6 +47,7 @@ type TransactionData = {
 type TransactionItemProps = {
   transaction: TransactionData;
   categories: CategoryOption[];
+  enableEditing?: boolean;
 };
 
 const EDIT_INITIAL_STATE: FormState = { ok: false, errors: {} };
@@ -88,10 +89,10 @@ function TransactionEditForm({
   const hasIncome = groupedCategories.income.length > 0;
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form action={formAction} className="space-y-4">
       <input type="hidden" name="id" value={transaction.id} />
       <div className="grid gap-2">
-        <label className="text-sm font-semibold text-slate-800">
+        <label className="text-sm font-semibold text-slate-900">
           Amount
         </label>
         <input
@@ -101,7 +102,7 @@ function TransactionEditForm({
           min={0}
           defaultValue={transaction.amount}
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+          className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
         />
         {state.errors?.amount?.length ? (
           <p className="text-xs text-red-500">{state.errors.amount[0]}</p>
@@ -109,7 +110,7 @@ function TransactionEditForm({
       </div>
 
       <div className="grid gap-2">
-        <label className="text-sm font-semibold text-slate-800">
+        <label className="text-sm font-semibold text-slate-900">
           Date
         </label>
         <input
@@ -117,7 +118,7 @@ function TransactionEditForm({
           type="date"
           defaultValue={transaction.occurredOn.slice(0, 10)}
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+          className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
         />
         {state.errors?.occurred_on?.length ? (
           <p className="text-xs text-red-500">
@@ -127,14 +128,14 @@ function TransactionEditForm({
       </div>
 
       <div className="grid gap-2">
-        <label className="text-sm font-semibold text-slate-800">
+        <label className="text-sm font-semibold text-slate-900">
           Category
         </label>
         <select
           name="category_id"
           defaultValue={transaction.categoryId ?? ''}
           required
-          className="h-10 rounded-lg border border-slate-300 px-3 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+          className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
         >
           <option value="" disabled>
             Select a category
@@ -164,7 +165,7 @@ function TransactionEditForm({
       </div>
 
       <div className="grid gap-2">
-        <p className="text-sm font-semibold text-slate-800">Payment method</p>
+        <p className="text-sm font-semibold text-slate-900">Payment method</p>
         <div className="flex flex-wrap gap-2">
           {(Object.entries(
             PAYMENT_METHOD_LABELS,
@@ -199,7 +200,7 @@ function TransactionEditForm({
       </div>
 
       <div className="grid gap-2">
-        <label className="text-sm font-semibold text-slate-800">
+        <label className="text-sm font-semibold text-slate-900">
           Notes
         </label>
         <textarea
@@ -207,18 +208,18 @@ function TransactionEditForm({
           rows={3}
           defaultValue={transaction.notes ?? ''}
           placeholder="Add context"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+          className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
         />
         {state.errors?.notes?.length ? (
           <p className="text-xs text-red-500">{state.errors.notes[0]}</p>
         ) : null}
       </div>
 
-      <div className="flex items-center justify-end gap-2 pt-1">
+      <div className="flex items-center justify-end gap-3 pt-2">
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+          className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
         >
           Cancel
         </button>
@@ -268,12 +269,16 @@ function DeleteSubmitButton() {
   );
 }
 
-export function TransactionItem({ transaction, categories }: TransactionItemProps) {
+export function TransactionItem({
+  transaction,
+  categories,
+  enableEditing = false,
+}: TransactionItemProps) {
   const [isEditing, setIsEditing] = useState(false);
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      {isEditing ? (
+    <article className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      {enableEditing && isEditing ? (
         <TransactionEditForm
           transaction={transaction}
           categories={categories}
@@ -284,7 +289,7 @@ export function TransactionItem({ transaction, categories }: TransactionItemProp
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <span
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-lg"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-lg font-semibold"
                 style={{
                   color: transaction.category?.color ?? '#4f46e5',
                   borderColor: transaction.category?.color ?? '#c7d2fe',
@@ -297,27 +302,31 @@ export function TransactionItem({ transaction, categories }: TransactionItemProp
                 <p className="text-sm font-semibold text-slate-900">
                   {transaction.category?.name ?? 'Uncategorised'}
                 </p>
-                <p className="text-xs font-medium uppercase text-slate-500">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {PAYMENT_METHOD_LABELS[transaction.paymentMethod]}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs font-medium text-slate-500">
                   {DATE.format(new Date(transaction.occurredOn))}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
-              >
-                Edit
-              </button>
-              <DeleteTransactionButton transactionId={transaction.id} />
+              {enableEditing ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                  >
+                    Edit
+                  </button>
+                  <DeleteTransactionButton transactionId={transaction.id} />
+                </>
+              ) : null}
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-500">
+            <span className="text-sm font-semibold text-slate-600">
               {transaction.type === 'income' ? 'Income' : 'Expense'}
             </span>
             <span
@@ -332,7 +341,9 @@ export function TransactionItem({ transaction, categories }: TransactionItemProp
             </span>
           </div>
           {transaction.notes ? (
-            <p className="mt-3 text-xs text-slate-600">{transaction.notes}</p>
+            <p className="mt-3 text-xs font-medium text-slate-600">
+              {transaction.notes}
+            </p>
           ) : null}
         </>
       )}

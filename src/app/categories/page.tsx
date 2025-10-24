@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { CreateCategoryForm } from '@/app/_components/create-category-form';
 import { MobileNav } from '@/app/_components/mobile-nav';
+import { CategoryRow } from '@/app/categories/_components/category-row';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -14,10 +15,6 @@ type Category = {
   color: string | null;
   created_at: string;
 };
-
-const DATE = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium',
-});
 
 export default async function CategoriesPage() {
   const supabase = await createSupabaseServerComponentClient();
@@ -55,34 +52,7 @@ export default async function CategoriesPage() {
           ) : (
             <div className="space-y-3">
               {categories.map((category) => (
-                <article
-                  key={category.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-lg"
-                      style={{
-                        color: category.color ?? '#4f46e5',
-                        borderColor: category.color ?? '#c7d2fe',
-                      }}
-                      aria-hidden
-                    >
-                      {category.icon ?? '🏷️'}
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {category.name}
-                      </p>
-                      <p className="text-xs font-medium uppercase text-slate-500">
-                        {category.type}
-                      </p>
-                    </div>
-                  </div>
-                  <time className="text-xs text-slate-500">
-                    Added {DATE.format(new Date(category.created_at))}
-                  </time>
-                </article>
+                <CategoryRow key={category.id} category={category} />
               ))}
             </div>
           )}

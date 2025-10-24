@@ -112,32 +112,33 @@ export default async function TransactionsPage() {
                                     </h3>
                                     <div className="space-y-3">
                                         {dayTransactions.map((transaction) => (
-                                            <TransactionItem
-                                                key={transaction.id}
-                                                transaction={{
-                                                    id: transaction.id,
-                                                    amount: Number(transaction.amount ?? 0),
-                                                    type: transaction.type,
-                                                    occurredOn: transaction.occurred_on,
-                                                    paymentMethod: transaction.payment_method,
-                                                    notes: transaction.notes,
-                                                    categoryId:
-                                                        transaction.category_id ??
-                                                        transaction.categories?.id ??
-                                                        null,
-                                                    category: transaction.categories
-                                                        ? {
-                                                            id: transaction.categories.id,
-                                                            name: transaction.categories.name,
-                                                            icon: transaction.categories.icon,
-                                                            color: transaction.categories.color,
-                                                            type: transaction.categories.type,
-                                                        }
-                                                        : null,
-                                                }}
-                                                categories={categories ?? []}
-                                            />
-                                        ))}
+                    <TransactionItem
+                      key={transaction.id}
+                      transaction={{
+                        id: transaction.id,
+                        amount: Number(transaction.amount ?? 0),
+                        type: transaction.type,
+                        occurredOn: transaction.occurred_on,
+                        paymentMethod: transaction.payment_method,
+                        notes: transaction.notes,
+                        categoryId:
+                          transaction.category_id ??
+                          transaction.categories?.id ??
+                          null,
+                        category: transaction.categories
+                          ? {
+                              id: transaction.categories.id,
+                              name: transaction.categories.name,
+                              icon: transaction.categories.icon,
+                              color: transaction.categories.color,
+                              type: transaction.categories.type,
+                            }
+                          : null,
+                      }}
+                      categories={categories ?? []}
+                      enableEditing
+                    />
+                  ))}
                                     </div>
                                 </div>
                             ))}

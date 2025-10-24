@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { Bar } from 'react-chartjs-2';
@@ -9,6 +8,7 @@ import {
   LinearScale,
   Tooltip,
   Legend,
+  type TooltipItem,
   type ChartData,
   type ChartOptions,
 } from 'chart.js';
@@ -22,7 +22,7 @@ type TimelinePoint = {
 };
 
 type SummaryChartProps = {
-    interval: 'month' | 'week';
+    interval: 'month' | 'week' | 'day';
     points: TimelinePoint[];
 };
 
@@ -65,8 +65,8 @@ export function SummaryChart({ interval, points }: SummaryChartProps) {
             },
             tooltip: {
                 callbacks: {
-                    label(context: any) {
-                        const value = context.parsed.y ?? 0;
+                    label(context: TooltipItem<'bar'>) {
+                        const value = Number(context.parsed.y ?? 0);
                         return `${context.dataset.label}: ${formatter.format(value)}`;
                     },
                 },
@@ -76,7 +76,12 @@ export function SummaryChart({ interval, points }: SummaryChartProps) {
             x: {
                 title: {
                     display: true,
-                    text: interval === 'month' ? 'Month' : 'Week',
+                    text:
+                        interval === 'month'
+                            ? 'Month'
+                            : interval === 'week'
+                              ? 'Week'
+                              : 'Day',
                 },
                 ticks: {
                     maxRotation: 0,
@@ -89,7 +94,7 @@ export function SummaryChart({ interval, points }: SummaryChartProps) {
                     text: 'Amount',
                 },
                 ticks: {
-                    callback(value: any) {
+                    callback(value) {
                         if (typeof value === 'number') {
                             return formatter.format(value);
                         }
@@ -104,7 +109,11 @@ export function SummaryChart({ interval, points }: SummaryChartProps) {
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between pb-2">
                 <h3 className="text-base font-semibold text-slate-900">
-                    {interval === 'month' ? 'Monthly summary' : 'Weekly summary'}
+                    {interval === 'month'
+                        ? 'Monthly summary'
+                        : interval === 'week'
+                          ? 'Weekly summary'
+                          : 'Daily summary'}
                 </h3>
             </div>
             <div className="h-72">

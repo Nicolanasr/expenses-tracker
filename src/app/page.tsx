@@ -102,57 +102,73 @@ function formatWeekLabel(start: Date) {
 }
 
 function computeTimeline(
-    transactions: NormalizedTransaction[],
-    interval: 'month' | 'week',
+  transactions: NormalizedTransaction[],
+  interval: 'month' | 'week' | 'day',
 ) {
-    const buckets = new Map<
-        string,
-        { label: string; income: number; expenses: number; order: number }
-    >();
+  const buckets = new Map<
+    string,
+    { label: string; income: number; expenses: number; order: number }
+  >();
 
-    transactions.forEach((transaction) => {
-        const occurred = new Date(transaction.occurredOn);
-        if (Number.isNaN(occurred.getTime())) {
-            return;
-        }
-        if (interval === 'month') {
-            const key = getMonthKey(occurred);
-            if (!buckets.has(key)) {
-                const monthDate = new Date(occurred.getFullYear(), occurred.getMonth(), 1);
-                buckets.set(key, {
-                    label: formatMonthLabel(monthDate),
-                    income: 0,
-                    expenses: 0,
-                    order: monthDate.getTime(),
-                });
-            }
-            const bucket = buckets.get(key)!;
-            if (transaction.type === 'income') {
-                bucket.income += transaction.amount;
-            } else {
-                bucket.expenses += transaction.amount;
-            }
-        } else {
-            const weekStart = getWeekStart(occurred);
-            const key = `${weekStart.getFullYear()}-W${String(
-                weekStart.getMonth() + 1,
-            ).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
-            if (!buckets.has(key)) {
-                buckets.set(key, {
-                    label: `Week of ${formatWeekLabel(weekStart)}`,
-                    income: 0,
-                    expenses: 0,
-                    order: weekStart.getTime(),
-                });
-            }
-            const bucket = buckets.get(key)!;
-            if (transaction.type === 'income') {
-                bucket.income += transaction.amount;
-            } else {
-                bucket.expenses += transaction.amount;
-            }
-        }
-    });
+  transactions.forEach((transaction) => {
+    const occurred = new Date(transaction.occurredOn);
+    if (Number.isNaN(occurred.getTime())) {
+      return;
+    }
+    if (interval === 'month') {
+      const key = getMonthKey(occurred);
+      if (!buckets.has(key)) {
+        const monthDate = new Date(occurred.getFullYear(), occurred.getMonth(), 1);
+        buckets.set(key, {
+          label: formatMonthLabel(monthDate),
+          income: 0,
+          expenses: 0,
+          order: monthDate.getTime(),
+        });
+      }
+      const bucket = buckets.get(key)!;
+      if (transaction.type === 'income') {
+        bucket.income += transaction.amount;
+      } else {
+        bucket.expenses += transaction.amount;
+      }
+    } else if (interval === 'week') {
+      const weekStart = getWeekStart(occurred);
+      const key = `${weekStart.getFullYear()}-W${String(
+        weekStart.getMonth() + 1,
+      ).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          label: `Week of ${formatWeekLabel(weekStart)}`,
+          income: 0,
+          expenses: 0,
+          order: weekStart.getTime(),
+        });
+      }
+      const bucket = buckets.get(key)!;
+      if (transaction.type === 'income') {
+        bucket.income += transaction.amount;
+      } else {
+        bucket.expenses += transaction.amount;
+      }
+    } else {
+      const key = occurred.toISOString().slice(0, 10);
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          label: formatWeekLabel(occurred),
+          income: 0,
+          expenses: 0,
+          order: new Date(key).getTime(),
+        });
+      }
+      const bucket = buckets.get(key)!;
+      if (transaction.type === 'income') {
+        bucket.income += transaction.amount;
+      } else {
+        bucket.expenses += transaction.amount;
+      }
+    }
+  });
 
     return Array.from(buckets.values())
         .sort((a, b) => a.order - b.order)
@@ -208,21 +224,33 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
   const resolvedSearchParams = (await searchParams) ?? {};
 
-  const start = parseParam(resolvedSearchParams, 'start');
-  const end = parseParam(resolvedSearchParams, 'end');
+  const today = new Date();
+  const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+  const defaultEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    .toISOString()
+    .slice(0, 10);
+
+  const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
+  const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
   const categoryId = parseParam(resolvedSearchParams, 'category');
   const paymentMethod = parseParam(resolvedSearchParams, 'payment');
   const search = parseParam(resolvedSearchParams, 'search');
   const intervalParam = parseParam(resolvedSearchParams, 'interval');
-    const summaryInterval: 'month' | 'week' =
-        intervalParam === 'week' ? 'week' : 'month';
+  const summaryInterval: 'month' | 'week' | 'day' =
+    intervalParam === 'week'
+      ? 'week'
+      : intervalParam === 'day'
+        ? 'day'
+        : 'month';
 
-    const [categoriesResponse, transactionsResponse] = await Promise.all([
-        supabase
-            .from('categories')
-            .select('id, name, type, icon, color')
-            .eq('user_id', user.id)
-            .order('name', { ascending: true }),
+  const [categoriesResponse, transactionsResponse] = await Promise.all([
+    supabase
+      .from('categories')
+      .select('id, name, type, icon, color')
+      .eq('user_id', user.id)
+      .order('name', { ascending: true }),
         (() => {
             let query = supabase
                 .from('transactions')
@@ -241,12 +269,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                 .eq('user_id', user.id)
                 .order('occurred_on', { ascending: false });
 
-            if (start) {
-                query = query.gte('occurred_on', start);
-            }
-            if (end) {
-                query = query.lte('occurred_on', end);
-            }
+      query = query.gte('occurred_on', start).lte('occurred_on', end);
             if (categoryId) {
                 query = query.eq('category_id', categoryId);
             }
@@ -370,15 +393,16 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         </p>
                     ) : (
                         <div className="space-y-3">
-                            {latestTransactions.map((transaction) => (
-                                <TransactionItem
-                                    key={transaction.id}
-                                    transaction={transaction}
-                                    categories={categoryOptionsForEditing}
-                                />
-                            ))}
-                        </div>
-                    )}
+              {latestTransactions.map((transaction) => (
+                <TransactionItem
+                  key={transaction.id}
+                  transaction={transaction}
+                  categories={categoryOptionsForEditing}
+                  enableEditing={false}
+                />
+              ))}
+            </div>
+          )}
                 </section>
             </main>
         </div>
