@@ -19,6 +19,7 @@ export async function updateUserSettings(_prevState: SettingsFormState, formData
 	const payload = settingsSchema.safeParse({
 		currency_code: String(formData.get("currency_code") ?? ""),
 		display_name: formData.get("display_name")?.toString().trim() || null,
+		pay_cycle_start_day: formData.get("pay_cycle_start_day") ?? "1",
 	});
 
 	if (!payload.success) {
@@ -59,6 +60,7 @@ export async function updateUserSettings(_prevState: SettingsFormState, formData
 			user_id: user.id,
 			currency_code: payload.data.currency_code,
 			display_name: payload.data.display_name,
+			pay_cycle_start_day: payload.data.pay_cycle_start_day,
 		},
 		{ onConflict: "user_id" }
 	);
@@ -70,5 +72,6 @@ export async function updateUserSettings(_prevState: SettingsFormState, formData
 
 	revalidatePath("/");
 	revalidatePath("/transactions");
+	revalidatePath("/budgets");
 	return { ok: true, message: "Settings saved." };
 }

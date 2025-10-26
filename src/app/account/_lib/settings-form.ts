@@ -5,6 +5,7 @@ export const CURRENCY_LOCK_MESSAGE = "Currency can't be changed after you've rec
 export const settingsSchema = z.object({
 	currency_code: z.string({ error: "Currency is required" }).length(3, "Use a valid ISO currency code"),
 	display_name: z.string().max(60, "Display name should be shorter than 60 characters").optional().nullable(),
+	pay_cycle_start_day: z.coerce.number().int().min(1, "Choose a day between 1 and 31").max(31, "Choose a day between 1 and 31"),
 });
 
 export type SettingsFormState = {

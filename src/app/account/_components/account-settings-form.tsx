@@ -12,6 +12,7 @@ import {
 type Props = {
     currencyCode: string;
     displayName: string | null;
+    payCycleStartDay: number;
     isCurrencyLocked: boolean;
 };
 
@@ -178,7 +179,7 @@ export const SUPPORTED_CURRENCIES = [
     { code: 'ZWL', label: 'ZWL – Zimbabwean Dollar' },
 ];
 
-export function AccountSettingsForm({ currencyCode, displayName, isCurrencyLocked }: Props) {
+export function AccountSettingsForm({ currencyCode, displayName, payCycleStartDay, isCurrencyLocked }: Props) {
     const [state, formAction] = useActionState<SettingsFormState, FormData>(
         updateUserSettings,
         SETTINGS_INITIAL_STATE,
@@ -204,6 +205,30 @@ export function AccountSettingsForm({ currencyCode, displayName, isCurrencyLocke
                 {state.errors?.display_name?.length ? (
                     <p className="text-xs text-red-500">{state.errors.display_name[0]}</p>
                 ) : null}
+            </div>
+
+            <div className="grid gap-2">
+                <label
+                    htmlFor="pay_cycle_start_day"
+                    className="text-sm font-semibold text-slate-900"
+                >
+                    Pay period starts on
+                </label>
+                <input
+                    id="pay_cycle_start_day"
+                    name="pay_cycle_start_day"
+                    type="number"
+                    min={1}
+                    max={31}
+                    defaultValue={payCycleStartDay}
+                    className="h-11 w-32 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                />
+                {state.errors?.pay_cycle_start_day?.length ? (
+                    <p className="text-xs text-red-500">{state.errors.pay_cycle_start_day[0]}</p>
+                ) : null}
+                <p className="text-xs text-slate-500">
+                    We’ll align budgets and dashboards to this day (e.g., 22 = cycle runs from the 22nd to the 21st).
+                </p>
             </div>
 
             <div className="grid gap-2">

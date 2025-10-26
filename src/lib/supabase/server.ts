@@ -7,7 +7,7 @@ export type Database = {
 		Tables: {
 			budgets: {
 				Row: {
-					amount: number;
+					amount_cents: number;
 					category_id: string;
 					created_at: string;
 					id: string;
@@ -15,7 +15,7 @@ export type Database = {
 					user_id: string;
 				};
 				Insert: {
-					amount: number;
+					amount_cents: number;
 					category_id: string;
 					created_at?: string;
 					id?: string;
@@ -23,7 +23,7 @@ export type Database = {
 					user_id: string;
 				};
 				Update: {
-					amount?: number;
+					amount_cents?: number;
 					category_id?: string;
 					created_at?: string;
 					id?: string;
@@ -142,6 +142,7 @@ export type Database = {
 					created_at: string;
 					currency_code: string;
 					display_name: string | null;
+					pay_cycle_start_day: number;
 					updated_at: string;
 					user_id: string;
 				};
@@ -149,6 +150,7 @@ export type Database = {
 					created_at?: string;
 					currency_code?: string;
 					display_name?: string | null;
+					pay_cycle_start_day?: number;
 					updated_at?: string;
 					user_id: string;
 				};
@@ -156,6 +158,7 @@ export type Database = {
 					created_at?: string;
 					currency_code?: string;
 					display_name?: string | null;
+					pay_cycle_start_day?: number;
 					updated_at?: string;
 					user_id?: string;
 				};
@@ -173,6 +176,7 @@ export type Database = {
 		Views: {
 			monthly_totals: {
 				Row: {
+					user_id: string | null;
 					month: string | null;
 					total_amount: number | null;
 					type: "income" | "expense" | null;
@@ -181,10 +185,10 @@ export type Database = {
 			};
 			v_budget_summary: {
 				Row: {
-					budget_amount: number | null;
+					budget_cents: number | null;
 					category_id: string | null;
 					month: string | null;
-					spent_amount: number | null;
+					spent_cents: number | null;
 					user_id: string | null;
 				};
 				Relationships: [];
@@ -204,9 +208,9 @@ export type Database = {
 				};
 				Returns: {
 					category_id: string;
-					budget_amount: number;
-					spent_amount: number;
-					remaining_amount: number;
+					budget_cents: number;
+					spent_cents: number;
+					remaining_cents: number;
 					used_pct: number;
 				}[];
 			};

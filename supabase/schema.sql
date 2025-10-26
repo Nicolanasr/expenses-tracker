@@ -16,6 +16,7 @@ create table if not exists public.user_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   currency_code text not null default 'USD',
   display_name text,
+  pay_cycle_start_day integer not null default 1 check (pay_cycle_start_day between 1 and 31),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -36,13 +37,13 @@ create table if not exists public.transactions (
   created_at timestamptz not null default now()
 );
 
--- Category budgets per month (stored in major currency units for now).
+-- Category budgets per month stored as integer cents for precision.
 create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
   category_id uuid not null references public.categories (id) on delete cascade,
   month text not null check (month ~ '^[0-9]{4}-[0-9]{2}$'),
-  amount numeric(12, 2) not null check (amount >= 0),
+  amount_cents bigint not null check (amount_cents >= 0),
   created_at timestamptz not null default now(),
   unique (user_id, category_id, month)
 );
@@ -66,15 +67,16 @@ create index if not exists transactions_user_month_category_idx
   on public.transactions (user_id, occurred_on, category_id)
   where type = 'expense';
 
--- Optional helper view to make monthly reporting easier.
+-- Optional helper view to make monthly reporting easier per user.
 create or replace view public.monthly_totals as
 select
+  user_id,
   date_trunc('month', occurred_on)::date as month,
   type,
   sum(amount) as total_amount
 from public.transactions
-group by 1, 2
-order by 1 desc;
+group by user_id, 2, 3
+order by month desc;
 
 alter table public.categories enable row level security;
 alter table public.transactions enable row level security;
@@ -133,28 +135,57 @@ end $$;
 
 -- View comparing spend vs budget per category/month.
 create or replace view public.v_budget_summary as
+with budget_cycles as (
+  select
+    b.user_id,
+    b.month,
+    b.category_id,
+    b.amount_cents,
+    u.pay_cycle_start_day,
+    date_trunc('month', to_date(b.month || '-01', 'YYYY-MM-DD')) as base_month
+  from public.budgets b
+  join public.user_settings u on u.user_id = b.user_id
+),
+cycle_ranges as (
+  select
+    bc.user_id,
+    bc.month,
+    bc.category_id,
+    bc.amount_cents,
+    (
+      bc.base_month
+      + (least(bc.pay_cycle_start_day, extract(day from bc.base_month + interval '1 month - 1 day')::int) - 1) * interval '1 day'
+    )::date as cycle_start,
+    (
+      bc.base_month
+      + (least(bc.pay_cycle_start_day, extract(day from bc.base_month + interval '1 month - 1 day')::int) - 1) * interval '1 day'
+      + interval '1 month'
+    )::date as cycle_end
+  from budget_cycles bc
+)
 select
-  b.user_id,
-  b.month,
-  b.category_id,
-  b.amount as budget_amount,
+  cr.user_id,
+  cr.month,
+  cr.category_id,
+  cr.amount_cents as budget_cents,
   coalesce((
-    select sum(t.amount)
+    select sum((t.amount * 100)::bigint)
     from public.transactions t
-    where t.user_id = b.user_id
+    where t.user_id = cr.user_id
       and t.type = 'expense'
-      and date_trunc('month', t.occurred_on) = to_date(b.month || '-01', 'YYYY-MM-DD')
-      and t.category_id = b.category_id
-  ), 0) as spent_amount
-from public.budgets b;
+      and t.category_id = cr.category_id
+      and t.occurred_on >= cr.cycle_start
+      and t.occurred_on < cr.cycle_end
+  ), 0) as spent_cents
+from cycle_ranges cr;
 
 -- RPC to fetch budget summary for a month (scoped via RLS).
 create or replace function public.rpc_get_budget_summary(p_month text)
 returns table (
   category_id uuid,
-  budget_amount numeric,
-  spent_amount numeric,
-  remaining_amount numeric,
+  budget_cents bigint,
+  spent_cents bigint,
+  remaining_cents bigint,
   used_pct numeric
 )
 language sql
@@ -162,12 +193,12 @@ stable
 as $$
   select
     v.category_id,
-    v.budget_amount,
-    v.spent_amount,
-    (v.budget_amount - v.spent_amount) as remaining_amount,
+    v.budget_cents,
+    v.spent_cents,
+    (v.budget_cents - v.spent_cents) as remaining_cents,
     case
-      when v.budget_amount = 0 then 0
-      else round(100.0 * v.spent_amount::numeric / nullif(v.budget_amount, 0), 1)
+      when v.budget_cents = 0 then 0
+      else round(100.0 * v.spent_cents::numeric / nullif(v.budget_cents, 0), 1)
     end as used_pct
   from public.v_budget_summary v
   where v.user_id = auth.uid()
@@ -184,8 +215,8 @@ as $$
 declare
   inserted integer;
 begin
-  insert into public.budgets (user_id, category_id, month, amount)
-  select auth.uid(), b.category_id, p_to_month, b.amount
+  insert into public.budgets (user_id, category_id, month, amount_cents)
+  select auth.uid(), b.category_id, p_to_month, b.amount_cents
   from public.budgets b
   where b.user_id = auth.uid()
     and b.month = p_from_month

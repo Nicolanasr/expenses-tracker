@@ -18,7 +18,7 @@ export default async function AccountPage() {
 
     const { data: settings } = await supabase
         .from('user_settings')
-        .select('currency_code, display_name')
+        .select('currency_code, display_name, pay_cycle_start_day')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -33,6 +33,7 @@ export default async function AccountPage() {
 
     const currencyCode = settings?.currency_code ?? 'USD';
     const displayName = settings?.display_name ?? null;
+    const payCycleStartDay = settings?.pay_cycle_start_day ?? 1;
     const hasTransactions = (transactionsCount ?? 0) > 0;
 
     return (
@@ -53,6 +54,7 @@ export default async function AccountPage() {
                     <AccountSettingsForm
                         currencyCode={currencyCode}
                         displayName={displayName}
+                        payCycleStartDay={payCycleStartDay}
                         isCurrencyLocked={hasTransactions}
                     />
                 </section>

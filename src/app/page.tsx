@@ -7,6 +7,7 @@ import { SummaryChart } from '@/app/_components/summary-chart';
 import { TransactionItem } from '@/app/_components/transaction-item';
 import { CategoryPieChart } from '@/app/_components/category-pie-chart';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
+import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 
 export const dynamic = 'force-dynamic';
 
@@ -301,17 +302,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     }
 
     const resolvedSearchParams = (await searchParams) ?? {};
-
-    const today = new Date();
-    const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1)
-        .toISOString()
-        .slice(0, 10);
-    const defaultEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-        .toISOString()
-        .slice(0, 10);
-
-    const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
-    const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
     const categoryId = parseParam(resolvedSearchParams, 'category');
     const paymentMethod = parseParam(resolvedSearchParams, 'payment');
     const search = parseParam(resolvedSearchParams, 'search');
@@ -325,7 +315,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
-        .select('currency_code, display_name')
+        .select('currency_code, display_name, pay_cycle_start_day')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -334,18 +324,28 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     }
 
     let currencyCode = settingsData?.currency_code ?? 'USD';
-  if (!settingsData) {
-    const { data: insertedSettings } = await supabase
-      .from('user_settings')
-      .upsert(
-        { user_id: user.id, currency_code: currencyCode },
-        { onConflict: 'user_id' },
-      )
-      .select('currency_code')
-      .maybeSingle();
-    currencyCode = insertedSettings?.currency_code ?? currencyCode;
-  }
+    let payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
+    if (!settingsData) {
+        const { data: insertedSettings } = await supabase
+            .from('user_settings')
+            .upsert(
+                { user_id: user.id, currency_code: currencyCode, pay_cycle_start_day: payCycleStartDay },
+                { onConflict: 'user_id' },
+            )
+            .select('currency_code, pay_cycle_start_day')
+            .maybeSingle();
+        currencyCode = insertedSettings?.currency_code ?? currencyCode;
+        payCycleStartDay = insertedSettings?.pay_cycle_start_day ?? payCycleStartDay;
+    }
 
+    const today = new Date();
+    const defaultCycleKey = currentCycleKeyForDate(today, payCycleStartDay);
+    const defaultCycleRange = getCycleRange(defaultCycleKey, payCycleStartDay);
+    const defaultStart = defaultCycleRange.startISO;
+    const defaultEnd = defaultCycleRange.endISOInclusive;
+
+    const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
+    const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
   const currencyFormatter = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: currencyCode,

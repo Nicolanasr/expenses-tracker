@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     { href: '/', label: 'Overview' },
     { href: '/transactions', label: 'Transactions' },
     { href: '/categories', label: 'Categories' },
+    { href: '/budgets', label: 'Budgets' },
 ];
 
 export function MobileNav() {
@@ -35,8 +36,8 @@ export function MobileNav() {
                                 type="button"
                                 onClick={() => setMenuOpen((prev) => !prev)}
                                 className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-semibold transition ${menuOpen
-                                        ? 'border-indigo-300 bg-indigo-50 text-indigo-600'
-                                        : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                    ? 'border-indigo-300 bg-indigo-50 text-indigo-600'
+                                    : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
                                     }`}
                                 aria-label="Open account menu"
                             >
@@ -67,7 +68,7 @@ export function MobileNav() {
                     </div>
                 </div>
 
-                <nav className="flex items-center gap-2">
+                <nav className="flex items-center gap-2 overflow-auto">
                     {NAV_ITEMS.map((item) => {
                         const isActive =
                             item.href === '/'
@@ -78,8 +79,8 @@ export function MobileNav() {
                                 key={item.href}
                                 href={item.href}
                                 className={`flex-1 rounded-full border px-3 py-2 text-center text-sm font-semibold transition ${isActive
-                                        ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
-                                        : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
+                                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                                    : 'border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600'
                                     }`}
                             >
                                 {item.label}
