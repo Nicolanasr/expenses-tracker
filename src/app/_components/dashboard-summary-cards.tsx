@@ -1,15 +1,11 @@
 'use client';
 
-const formatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-});
-
 type DashboardSummaryCardsProps = {
   totalIncome: number;
   totalExpenses: number;
   balance: number;
   transactionCount: number;
+  currencyCode: string;
 };
 
 export function DashboardSummaryCards({
@@ -17,7 +13,12 @@ export function DashboardSummaryCards({
   totalExpenses,
   balance,
   transactionCount,
+  currencyCode,
 }: DashboardSummaryCardsProps) {
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currencyCode,
+  });
   return (
     <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-  searchParams?: Promise<SearchParams>;
+    searchParams?: Promise<SearchParams>;
 };
 
 type CategoryRow = {
@@ -28,6 +28,7 @@ type TransactionRow = {
     id: string;
     amount: number;
     type: 'income' | 'expense';
+    currency_code: string;
     occurred_on: string;
     payment_method: 'cash' | 'card' | 'transfer' | 'other';
     notes: string | null;
@@ -39,6 +40,7 @@ type NormalizedTransaction = {
     id: string;
     amount: number;
     type: 'income' | 'expense';
+    currencyCode: string;
     occurredOn: string;
     paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
     notes: string | null;
@@ -55,20 +57,11 @@ type NormalizedTransaction = {
 const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-const CURRENCY = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-});
-
-function formatCurrency(value: number) {
-  return CURRENCY.format(Math.round(value));
-}
-
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
 
 function inclusiveDayDiff(start: Date, end: Date) {
-  const diff = Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY);
-  return diff >= 0 ? diff + 1 : 0;
+    const diff = Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY);
+    return diff >= 0 ? diff + 1 : 0;
 }
 
 function isPaymentMethod(value: string): value is PaymentMethod {
@@ -76,12 +69,12 @@ function isPaymentMethod(value: string): value is PaymentMethod {
 }
 
 function parseParam(
-  params: SearchParams,
-  key: string,
+    params: SearchParams,
+    key: string,
 ): string | undefined {
-  const raw = params?.[key];
-  if (!raw) return undefined;
-  if (Array.isArray(raw)) {
+    const raw = params?.[key];
+    if (!raw) return undefined;
+    if (Array.isArray(raw)) {
         return raw[0];
     }
     return raw;
@@ -110,7 +103,7 @@ function getWeekStart(date: Date) {
 }
 
 function toISODate(date: Date) {
-  return date.toISOString().slice(0, 10);
+    return date.toISOString().slice(0, 10);
 }
 
 function formatWeekLabel(start: Date) {
@@ -120,95 +113,99 @@ function formatWeekLabel(start: Date) {
     }).format(start);
 }
 
-function normalizeTransactions(rows: TransactionRow[]): NormalizedTransaction[] {
-  return rows.map((transaction) => ({
-    id: transaction.id,
-    amount: Number(transaction.amount ?? 0),
-    type: transaction.type,
-    occurredOn: transaction.occurred_on,
-    paymentMethod: transaction.payment_method,
-    notes: transaction.notes,
-    categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
-    category: transaction.categories
-      ? {
-          id: transaction.categories.id,
-          name: transaction.categories.name,
-          icon: transaction.categories.icon,
-          color: transaction.categories.color,
-          type: transaction.categories.type,
-        }
-      : null,
-  }));
+function normalizeTransactions(
+    rows: TransactionRow[],
+    fallbackCurrency: string,
+): NormalizedTransaction[] {
+    return rows.map((transaction) => ({
+        id: transaction.id,
+        amount: Number(transaction.amount ?? 0),
+        type: transaction.type,
+        currencyCode: transaction.currency_code ?? fallbackCurrency,
+        occurredOn: transaction.occurred_on,
+        paymentMethod: transaction.payment_method,
+        notes: transaction.notes,
+        categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
+        category: transaction.categories
+            ? {
+                id: transaction.categories.id,
+                name: transaction.categories.name,
+                icon: transaction.categories.icon,
+                color: transaction.categories.color,
+                type: transaction.categories.type,
+            }
+            : null,
+    }));
 }
 
 function computeTimeline(
-  transactions: NormalizedTransaction[],
-  interval: 'month' | 'week' | 'day',
+    transactions: NormalizedTransaction[],
+    interval: 'month' | 'week' | 'day',
 ) {
-  const buckets = new Map<
-    string,
-    { label: string; income: number; expenses: number; order: number }
-  >();
+    const buckets = new Map<
+        string,
+        { label: string; income: number; expenses: number; order: number }
+    >();
 
-  transactions.forEach((transaction) => {
-    const occurred = new Date(transaction.occurredOn);
-    if (Number.isNaN(occurred.getTime())) {
-      return;
-    }
-    if (interval === 'month') {
-      const key = getMonthKey(occurred);
-      if (!buckets.has(key)) {
-        const monthDate = new Date(occurred.getFullYear(), occurred.getMonth(), 1);
-        buckets.set(key, {
-          label: formatMonthLabel(monthDate),
-          income: 0,
-          expenses: 0,
-          order: monthDate.getTime(),
-        });
-      }
-      const bucket = buckets.get(key)!;
-      if (transaction.type === 'income') {
-        bucket.income += transaction.amount;
-      } else {
-        bucket.expenses += transaction.amount;
-      }
-    } else if (interval === 'week') {
-      const weekStart = getWeekStart(occurred);
-      const key = `${weekStart.getFullYear()}-W${String(
-        weekStart.getMonth() + 1,
-      ).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
-      if (!buckets.has(key)) {
-        buckets.set(key, {
-          label: `Week of ${formatWeekLabel(weekStart)}`,
-          income: 0,
-          expenses: 0,
-          order: weekStart.getTime(),
-        });
-      }
-      const bucket = buckets.get(key)!;
-      if (transaction.type === 'income') {
-        bucket.income += transaction.amount;
-      } else {
-        bucket.expenses += transaction.amount;
-      }
-    } else {
-      const key = occurred.toISOString().slice(0, 10);
-      if (!buckets.has(key)) {
-        buckets.set(key, {
-          label: formatWeekLabel(occurred),
-          income: 0,
-          expenses: 0,
-          order: new Date(key).getTime(),
-        });
-      }
-      const bucket = buckets.get(key)!;
-      if (transaction.type === 'income') {
-        bucket.income += transaction.amount;
-      } else {
-        bucket.expenses += transaction.amount;
-      }
-    }
-  });
+    transactions.forEach((transaction) => {
+        const occurred = new Date(transaction.occurredOn);
+        if (Number.isNaN(occurred.getTime())) {
+            return;
+        }
+        if (interval === 'month') {
+            const key = getMonthKey(occurred);
+            if (!buckets.has(key)) {
+                const monthDate = new Date(occurred.getFullYear(), occurred.getMonth(), 1);
+                buckets.set(key, {
+                    label: formatMonthLabel(monthDate),
+                    income: 0,
+                    expenses: 0,
+                    order: monthDate.getTime(),
+                });
+            }
+            const bucket = buckets.get(key)!;
+            if (transaction.type === 'income') {
+                bucket.income += transaction.amount;
+            } else {
+                bucket.expenses += transaction.amount;
+            }
+        } else if (interval === 'week') {
+            const weekStart = getWeekStart(occurred);
+            const key = `${weekStart.getFullYear()}-W${String(
+                weekStart.getMonth() + 1,
+            ).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`;
+            if (!buckets.has(key)) {
+                buckets.set(key, {
+                    label: `Week of ${formatWeekLabel(weekStart)}`,
+                    income: 0,
+                    expenses: 0,
+                    order: weekStart.getTime(),
+                });
+            }
+            const bucket = buckets.get(key)!;
+            if (transaction.type === 'income') {
+                bucket.income += transaction.amount;
+            } else {
+                bucket.expenses += transaction.amount;
+            }
+        } else {
+            const key = occurred.toISOString().slice(0, 10);
+            if (!buckets.has(key)) {
+                buckets.set(key, {
+                    label: formatWeekLabel(occurred),
+                    income: 0,
+                    expenses: 0,
+                    order: new Date(key).getTime(),
+                });
+            }
+            const bucket = buckets.get(key)!;
+            if (transaction.type === 'income') {
+                bucket.income += transaction.amount;
+            } else {
+                bucket.expenses += transaction.amount;
+            }
+        }
+    });
 
     return Array.from(buckets.values())
         .sort((a, b) => a.order - b.order)
@@ -253,163 +250,201 @@ function computeCategoryBreakdown(transactions: NormalizedTransaction[]) {
 }
 
 function computeExpenseTotalsByCategory(transactions: NormalizedTransaction[]) {
-  const totals = new Map<
-    string,
-    { id: string; name: string; amount: number; color: string | null }
-  >();
+    const totals = new Map<
+        string,
+        { id: string; name: string; amount: number; color: string | null }
+    >();
 
-  transactions
-    .filter((transaction) => transaction.type === 'expense')
-    .forEach((transaction) => {
-      const key = transaction.category?.id ?? '__uncategorised__';
-      if (!totals.has(key)) {
-        totals.set(key, {
-          id: key,
-          name: transaction.category?.name ?? 'Uncategorised',
-          amount: 0,
-          color: transaction.category?.color ?? '#94a3b8',
+    transactions
+        .filter((transaction) => transaction.type === 'expense')
+        .forEach((transaction) => {
+            const key = transaction.category?.id ?? '__uncategorised__';
+            if (!totals.has(key)) {
+                totals.set(key, {
+                    id: key,
+                    name: transaction.category?.name ?? 'Uncategorised',
+                    amount: 0,
+                    color: transaction.category?.color ?? '#94a3b8',
+                });
+            }
+            totals.get(key)!.amount += transaction.amount;
         });
-      }
-      totals.get(key)!.amount += transaction.amount;
-    });
 
-  return totals;
+    return totals;
 }
 
 function getPreviousRange(startISO: string, endISO: string) {
-  const startDate = new Date(startISO);
-  const endDate = new Date(endISO);
-  const totalDays = Math.max(1, inclusiveDayDiff(startDate, endDate));
+    const startDate = new Date(startISO);
+    const endDate = new Date(endISO);
+    const totalDays = Math.max(1, inclusiveDayDiff(startDate, endDate));
 
-  const previousEnd = new Date(startDate);
-  previousEnd.setDate(previousEnd.getDate() - 1);
+    const previousEnd = new Date(startDate);
+    previousEnd.setDate(previousEnd.getDate() - 1);
 
-  const previousStart = new Date(previousEnd);
-  previousStart.setDate(previousStart.getDate() - (totalDays - 1));
+    const previousStart = new Date(previousEnd);
+    previousStart.setDate(previousStart.getDate() - (totalDays - 1));
 
-  return {
-    start: toISODate(previousStart),
-    end: toISODate(previousEnd),
-  };
+    return {
+        start: toISODate(previousStart),
+        end: toISODate(previousEnd),
+    };
 }
 
 export default async function OverviewPage({ searchParams }: PageProps) {
-  const supabase = await createSupabaseServerComponentClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    const supabase = await createSupabaseServerComponentClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/auth/sign-in');
+    if (!user) {
+        redirect('/auth/sign-in');
+    }
+
+    const resolvedSearchParams = (await searchParams) ?? {};
+
+    const today = new Date();
+    const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1)
+        .toISOString()
+        .slice(0, 10);
+    const defaultEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+        .toISOString()
+        .slice(0, 10);
+
+    const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
+    const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
+    const categoryId = parseParam(resolvedSearchParams, 'category');
+    const paymentMethod = parseParam(resolvedSearchParams, 'payment');
+    const search = parseParam(resolvedSearchParams, 'search');
+    const intervalParam = parseParam(resolvedSearchParams, 'interval');
+    const summaryInterval: 'month' | 'week' | 'day' =
+        intervalParam === 'week'
+            ? 'week'
+            : intervalParam === 'day'
+                ? 'day'
+                : 'month';
+
+    const { data: settingsData, error: settingsError } = await supabase
+        .from('user_settings')
+        .select('currency_code, display_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (settingsError && settingsError.code !== 'PGRST116') {
+        throw settingsError;
+    }
+
+    let currencyCode = settingsData?.currency_code ?? 'USD';
+  if (!settingsData) {
+    const { data: insertedSettings } = await supabase
+      .from('user_settings')
+      .upsert(
+        { user_id: user.id, currency_code: currencyCode },
+        { onConflict: 'user_id' },
+      )
+      .select('currency_code')
+      .maybeSingle();
+    currencyCode = insertedSettings?.currency_code ?? currencyCode;
   }
 
-  const resolvedSearchParams = (await searchParams) ?? {};
+  const currencyFormatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currencyCode,
+  });
 
-  const today = new Date();
-  const defaultStart = new Date(today.getFullYear(), today.getMonth(), 1)
-    .toISOString()
-    .slice(0, 10);
-  const defaultEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    .toISOString()
-    .slice(0, 10);
+  const formatCurrencyAmount = (value: number) =>
+    currencyFormatter.format(Math.round(value));
 
-  const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
-  const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
-  const categoryId = parseParam(resolvedSearchParams, 'category');
-  const paymentMethod = parseParam(resolvedSearchParams, 'payment');
-  const search = parseParam(resolvedSearchParams, 'search');
-  const intervalParam = parseParam(resolvedSearchParams, 'interval');
-  const summaryInterval: 'month' | 'week' | 'day' =
-    intervalParam === 'week'
-      ? 'week'
-      : intervalParam === 'day'
-        ? 'day'
-        : 'month';
-
-  const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
-    let query = supabase
-      .from('transactions')
-      .select(
-        `
+    const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
+        let query = supabase
+            .from('transactions')
+            .select(
+                `
         id,
         amount,
         type,
+        currency_code,
         occurred_on,
         payment_method,
         notes,
         category_id,
         categories (id, name, type, icon, color)
       `,
-      )
-      .eq('user_id', user.id)
-      .gte('occurred_on', rangeStart)
-      .lte('occurred_on', rangeEnd);
+            )
+            .eq('user_id', user.id)
+            .gte('occurred_on', rangeStart)
+            .lte('occurred_on', rangeEnd);
 
-    if (categoryId) {
-      query = query.eq('category_id', categoryId);
+        if (categoryId) {
+            query = query.eq('category_id', categoryId);
+        }
+        if (paymentMethod && isPaymentMethod(paymentMethod)) {
+            query = query.eq('payment_method', paymentMethod);
+        }
+        if (search && search.trim().length > 0) {
+            const term = `%${search.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+            query = query.or(`notes.ilike.${term},categories.name.ilike.${term}`);
+        }
+
+        return query.order('occurred_on', { ascending: false });
+    };
+
+    const { start: previousStart, end: previousEnd } = getPreviousRange(
+        start,
+        end,
+    );
+
+    const [
+        categoriesResponse,
+        currentTransactionsResponse,
+        previousTransactionsResponse,
+    ] = await Promise.all([
+        supabase
+            .from('categories')
+            .select('id, name, type, icon, color')
+            .eq('user_id', user.id)
+            .order('name', { ascending: true }),
+        buildTransactionsQuery(start, end),
+        buildTransactionsQuery(previousStart, previousEnd),
+    ]);
+
+    if (categoriesResponse.error) {
+        throw categoriesResponse.error;
     }
-    if (paymentMethod && isPaymentMethod(paymentMethod)) {
-      query = query.eq('payment_method', paymentMethod);
+    if (currentTransactionsResponse.error) {
+        throw currentTransactionsResponse.error;
     }
-    if (search && search.trim().length > 0) {
-      const term = `%${search.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
-      query = query.or(`notes.ilike.${term},categories.name.ilike.${term}`);
+    if (previousTransactionsResponse.error) {
+        throw previousTransactionsResponse.error;
     }
 
-    return query.order('occurred_on', { ascending: false });
-  };
+    const categories = (categoriesResponse.data ?? []) as CategoryRow[];
+    const transactions: TransactionRow[] =
+        (currentTransactionsResponse.data ?? []) as TransactionRow[];
+    const previousTransactions: TransactionRow[] =
+        (previousTransactionsResponse.data ?? []) as TransactionRow[];
 
-  const { start: previousStart, end: previousEnd } = getPreviousRange(
-    start,
-    end,
-  );
+    const categoryOptionsForFilters = categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        type: category.type,
+    }));
 
-  const [
-    categoriesResponse,
-    currentTransactionsResponse,
-    previousTransactionsResponse,
-  ] = await Promise.all([
-    supabase
-      .from('categories')
-      .select('id, name, type, icon, color')
-      .eq('user_id', user.id)
-      .order('name', { ascending: true }),
-    buildTransactionsQuery(start, end),
-    buildTransactionsQuery(previousStart, previousEnd),
-  ]);
+    const categoryOptionsForEditing = categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        icon: category.icon,
+        color: category.color,
+        type: category.type,
+    }));
 
-  if (categoriesResponse.error) {
-    throw categoriesResponse.error;
-  }
-  if (currentTransactionsResponse.error) {
-    throw currentTransactionsResponse.error;
-  }
-  if (previousTransactionsResponse.error) {
-    throw previousTransactionsResponse.error;
-  }
-
-  const categories = (categoriesResponse.data ?? []) as CategoryRow[];
-  const transactions: TransactionRow[] =
-    (currentTransactionsResponse.data ?? []) as TransactionRow[];
-  const previousTransactions: TransactionRow[] =
-    (previousTransactionsResponse.data ?? []) as TransactionRow[];
-
-  const categoryOptionsForFilters = categories.map((category) => ({
-    id: category.id,
-    name: category.name,
-    type: category.type,
-  }));
-
-  const categoryOptionsForEditing = categories.map((category) => ({
-    id: category.id,
-    name: category.name,
-    icon: category.icon,
-    color: category.color,
-    type: category.type,
-  }));
-
-  const normalizedTransactions = normalizeTransactions(transactions);
-  const previousNormalizedTransactions = normalizeTransactions(previousTransactions);
+    const normalizedTransactions = normalizeTransactions(
+        transactions,
+        currencyCode,
+    );
+    const previousNormalizedTransactions = normalizeTransactions(
+        previousTransactions,
+        currencyCode,
+    );
 
     const totalIncome = normalizedTransactions
         .filter((transaction) => transaction.type === 'income')
@@ -419,91 +454,91 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         .reduce((sum, transaction) => sum + transaction.amount, 0);
     const balance = totalIncome - totalExpenses;
 
-  const timelinePoints = computeTimeline(
-    normalizedTransactions,
-    summaryInterval,
-  );
-  const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
-  const latestTransactions = normalizedTransactions.slice(0, 8);
-
-  const currentExpenseTotals = computeExpenseTotalsByCategory(
-    normalizedTransactions,
-  );
-  const previousExpenseTotals = computeExpenseTotalsByCategory(
-    previousNormalizedTransactions,
-  );
-
-  const insights: string[] = [];
-
-  const categoryChanges = Array.from(currentExpenseTotals.values())
-    .map((current) => {
-      const previousAmount = previousExpenseTotals.get(current.id)?.amount ?? 0;
-      const diff = current.amount - previousAmount;
-      const ratio = previousAmount > 0 ? diff / previousAmount : Infinity;
-      return {
-        id: current.id,
-        name: current.name,
-        diff,
-        ratio,
-        current: current.amount,
-        previous: previousAmount,
-      };
-    })
-    .filter((entry) => entry.diff > 0 && entry.current > 25)
-    .sort((a, b) => {
-      const ratioDiff = (b.ratio === Infinity ? 999 : b.ratio) - (a.ratio === Infinity ? 999 : a.ratio);
-      if (ratioDiff !== 0) {
-        return ratioDiff;
-      }
-      return b.diff - a.diff;
-    })
-    .slice(0, 3);
-
-  categoryChanges.forEach((entry) => {
-    if (entry.ratio === Infinity) {
-      insights.push(
-        `${entry.name} is a new expense this period at ${formatCurrency(entry.current)}.`,
-      );
-    } else if (entry.ratio >= 0.15) {
-      insights.push(
-        `${entry.name} spending increased by ${Math.round(entry.ratio * 100)}% (${formatCurrency(entry.previous)} → ${formatCurrency(entry.current)}).`,
-      );
-    }
-  });
-
-  if (categoryBreakdown.length) {
-    const topCategory = categoryBreakdown[0];
-    insights.push(
-      `${topCategory.label} is your top spending category this period at ${formatCurrency(topCategory.amount)}.`,
+    const timelinePoints = computeTimeline(
+        normalizedTransactions,
+        summaryInterval,
     );
-  }
+    const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
+    const latestTransactions = normalizedTransactions.slice(0, 8);
 
-  if (totalIncome > 0) {
-    const ratio = totalExpenses / totalIncome;
-    if (ratio >= 0.9) {
-      insights.push(
-        `Expenses account for ${Math.round(ratio * 100)}% of your income. Consider reducing discretionary spending.`,
-      );
+    const currentExpenseTotals = computeExpenseTotalsByCategory(
+        normalizedTransactions,
+    );
+    const previousExpenseTotals = computeExpenseTotalsByCategory(
+        previousNormalizedTransactions,
+    );
+
+    const insights: string[] = [];
+
+    const categoryChanges = Array.from(currentExpenseTotals.values())
+        .map((current) => {
+            const previousAmount = previousExpenseTotals.get(current.id)?.amount ?? 0;
+            const diff = current.amount - previousAmount;
+            const ratio = previousAmount > 0 ? diff / previousAmount : Infinity;
+            return {
+                id: current.id,
+                name: current.name,
+                diff,
+                ratio,
+                current: current.amount,
+                previous: previousAmount,
+            };
+        })
+        .filter((entry) => entry.diff > 0 && entry.current > 25)
+        .sort((a, b) => {
+            const ratioDiff = (b.ratio === Infinity ? 999 : b.ratio) - (a.ratio === Infinity ? 999 : a.ratio);
+            if (ratioDiff !== 0) {
+                return ratioDiff;
+            }
+            return b.diff - a.diff;
+        })
+        .slice(0, 3);
+
+    categoryChanges.forEach((entry) => {
+        if (entry.ratio === Infinity) {
+            insights.push(
+                `${entry.name} is a new expense this period at ${formatCurrencyAmount(entry.current)}.`,
+            );
+        } else if (entry.ratio >= 0.15) {
+            insights.push(
+                `${entry.name} spending increased by ${Math.round(entry.ratio * 100)}% (${formatCurrencyAmount(entry.previous)} → ${formatCurrencyAmount(entry.current)}).`,
+            );
+        }
+    });
+
+    if (categoryBreakdown.length) {
+        const topCategory = categoryBreakdown[0];
+        insights.push(
+            `${topCategory.label} is your top spending category this period at ${formatCurrencyAmount(topCategory.amount)}.`,
+        );
     }
-  }
 
-  const rangeStartDate = new Date(start);
-  const rangeEndDate = new Date(end);
-  const totalPeriodDays = Math.max(1, inclusiveDayDiff(rangeStartDate, rangeEndDate));
-  const todayDate = new Date();
-  const observedEnd = todayDate < rangeEndDate ? todayDate : rangeEndDate;
-  const observedDays = Math.max(1, inclusiveDayDiff(rangeStartDate, observedEnd));
-
-  if (observedDays < totalPeriodDays && totalExpenses > 0) {
-    const projectedExpenses = (totalExpenses / observedDays) * totalPeriodDays;
-    if (projectedExpenses > totalExpenses + 50) {
-      insights.push(
-        `At the current pace you may spend about ${formatCurrency(
-          projectedExpenses,
-        )} on expenses this period (currently ${formatCurrency(totalExpenses)}).`,
-      );
+    if (totalIncome > 0) {
+        const ratio = totalExpenses / totalIncome;
+        if (ratio >= 0.9) {
+            insights.push(
+                `Expenses account for ${Math.round(ratio * 100)}% of your income. Consider reducing discretionary spending.`,
+            );
+        }
     }
-  }
+
+    const rangeStartDate = new Date(start);
+    const rangeEndDate = new Date(end);
+    const totalPeriodDays = Math.max(1, inclusiveDayDiff(rangeStartDate, rangeEndDate));
+    const todayDate = new Date();
+    const observedEnd = todayDate < rangeEndDate ? todayDate : rangeEndDate;
+    const observedDays = Math.max(1, inclusiveDayDiff(rangeStartDate, observedEnd));
+
+    if (observedDays < totalPeriodDays && totalExpenses > 0) {
+        const projectedExpenses = (totalExpenses / observedDays) * totalPeriodDays;
+        if (projectedExpenses > totalExpenses + 50) {
+            insights.push(
+                `At the current pace you may spend about ${formatCurrencyAmount(
+                    projectedExpenses,
+                )} on expenses this period (currently ${formatCurrencyAmount(totalExpenses)}).`,
+            );
+        }
+    }
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -527,23 +562,24 @@ export default async function OverviewPage({ searchParams }: PageProps) {
           totalExpenses={totalExpenses}
           balance={balance}
           transactionCount={normalizedTransactions.length}
+          currencyCode={currencyCode}
         />
 
-        {insights.length ? (
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-900">
-              Smart insights
-            </h2>
-            <ul className="mt-2 space-y-2 text-sm text-slate-700">
-              {insights.map((insight, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
-                  <span>{insight}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+                {insights.length ? (
+                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h2 className="text-base font-semibold text-slate-900">
+                            Smart insights
+                        </h2>
+                        <ul className="mt-2 space-y-2 text-sm text-slate-700">
+                            {insights.map((insight, index) => (
+                                <li key={index} className="flex items-start gap-2">
+                                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
+                                    <span>{insight}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                ) : null}
 
                 <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
                     <SummaryChart interval={summaryInterval} points={timelinePoints} />
@@ -567,16 +603,16 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         </p>
                     ) : (
                         <div className="space-y-3">
-              {latestTransactions.map((transaction) => (
-                <TransactionItem
-                  key={transaction.id}
-                  transaction={transaction}
-                  categories={categoryOptionsForEditing}
-                  enableEditing={false}
-                />
-              ))}
-            </div>
-          )}
+                            {latestTransactions.map((transaction) => (
+                                <TransactionItem
+                                    key={transaction.id}
+                                    transaction={transaction}
+                                    categories={categoryOptionsForEditing}
+                                    enableEditing={false}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </section>
             </main>
         </div>

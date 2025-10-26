@@ -11,6 +11,26 @@ export type FormState = {
 	errors?: Record<string, string[] | undefined>;
 };
 
+async function getUserCurrencyCode(supabase: Awaited<ReturnType<typeof createSupabaseServerActionClient>>, userId: string) {
+	const { data, error } = await supabase.from("user_settings").select("currency_code").eq("user_id", userId).maybeSingle();
+
+	if (error && error.code !== "PGRST116") {
+		throw error;
+	}
+
+	if (data?.currency_code) {
+		return data.currency_code;
+	}
+
+	const { data: inserted } = await supabase
+		.from("user_settings")
+		.upsert({ user_id: userId, currency_code: "USD" }, { onConflict: "user_id" })
+		.select("currency_code")
+		.maybeSingle();
+
+	return inserted?.currency_code ?? "USD";
+}
+
 const categorySchema = z.object({
 	name: z
 		.string({ error: "Category name is required" })
@@ -117,6 +137,8 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		};
 	}
 
+	const currencyCode = await getUserCurrencyCode(supabase, user.id);
+
 	const categoriesResponse = await supabase.from("categories").select("id, type");
 
 	if (categoriesResponse.error) {
@@ -163,6 +185,7 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		category_id: payload.data.category_id,
 		type: category.type,
 		user_id: user.id,
+		currency_code: currencyCode,
 	});
 
 	if (error) {
@@ -211,10 +234,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		};
 	}
 
-	const categoriesResponse = await supabase
-		.from("categories")
-		.select("id, type")
-		.eq("user_id", user.id);
+	const categoriesResponse = await supabase.from("categories").select("id, type").eq("user_id", user.id);
 
 	if (categoriesResponse.error) {
 		console.error(categoriesResponse.error);
@@ -226,9 +246,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		};
 	}
 
-	const category = (categoriesResponse.data ?? []).find(
-		(item) => item.id === payload.data.category_id,
-	);
+	const category = (categoriesResponse.data ?? []).find((item) => item.id === payload.data.category_id);
 
 	if (!category) {
 		return {

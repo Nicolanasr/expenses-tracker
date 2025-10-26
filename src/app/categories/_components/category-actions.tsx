@@ -18,14 +18,16 @@ export function CategoryRemoveButton({ categoryId }: Props) {
       <input type="hidden" name="id" value={categoryId} />
       <button
         type="submit"
-        className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:border-red-300 hover:text-red-700"
+        className="rounded-full border border-red-200 p-2 text-red-600 transition hover:border-red-300 hover:text-red-700"
         onClick={(event) => {
           if (!window.confirm('Delete this category? Transactions will be uncategorised.')) {
             event.preventDefault();
           }
         }}
+        aria-label="Delete category"
+        title="Delete category"
       >
-        {state.ok ? 'Deleted' : 'Delete'}
+        {state.ok ? '✔️' : '🗑️'}
       </button>
       {state.error ? (
         <p className="mt-1 text-xs text-red-500">{state.error}</p>

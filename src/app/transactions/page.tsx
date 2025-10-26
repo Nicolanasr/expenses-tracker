@@ -20,6 +20,7 @@ type Transaction = {
     id: string;
     amount: number;
     type: 'income' | 'expense';
+    currency_code: string;
     occurred_on: string;
     payment_method: 'cash' | 'card' | 'transfer' | 'other';
     notes: string | null;
@@ -41,6 +42,22 @@ export default async function TransactionsPage() {
         redirect('/auth/sign-in');
     }
 
+    const { data: settings } = await supabase
+        .from('user_settings')
+        .select('currency_code')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    let currencyCode = settings?.currency_code ?? 'USD';
+    if (!settings) {
+        const { data: inserted } = await supabase
+            .from('user_settings')
+            .upsert({ user_id: user.id, currency_code: currencyCode }, { onConflict: 'user_id' })
+            .select('currency_code')
+            .maybeSingle();
+        currencyCode = inserted?.currency_code ?? currencyCode;
+    }
+
     const [{ data: categories }, { data: transactions }] = await Promise.all([
         supabase
             .from('categories')
@@ -53,6 +70,7 @@ export default async function TransactionsPage() {
         id,
         amount,
         type,
+        currency_code,
         occurred_on,
         payment_method,
         notes,
@@ -118,6 +136,7 @@ export default async function TransactionsPage() {
                         id: transaction.id,
                         amount: Number(transaction.amount ?? 0),
                         type: transaction.type,
+                        currencyCode: transaction.currency_code ?? currencyCode,
                         occurredOn: transaction.occurred_on,
                         paymentMethod: transaction.payment_method,
                         notes: transaction.notes,

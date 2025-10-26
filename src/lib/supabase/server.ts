@@ -1,79 +1,218 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 export type Database = {
 	public: {
 		Tables: {
+			budgets: {
+				Row: {
+					amount: number;
+					category_id: string;
+					created_at: string;
+					id: string;
+					month: string;
+					user_id: string;
+				};
+				Insert: {
+					amount: number;
+					category_id: string;
+					created_at?: string;
+					id?: string;
+					month: string;
+					user_id: string;
+				};
+				Update: {
+					amount?: number;
+					category_id?: string;
+					created_at?: string;
+					id?: string;
+					month?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "budgets_category_id_fkey";
+						columns: ["category_id"];
+						referencedRelation: "categories";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "budgets_user_id_fkey";
+						columns: ["user_id"];
+						isOneToOne?: true;
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
+			};
 			categories: {
 				Row: {
+					color: string | null;
+					created_at: string;
+					icon: string;
 					id: string;
 					name: string;
 					type: "income" | "expense";
-					icon: string;
 					user_id: string;
-					color: string | null;
-					created_at: string;
 				};
 				Insert: {
+					color?: string | null;
+					created_at?: string;
+					icon?: string;
 					id?: string;
 					name: string;
 					type: "income" | "expense";
-					icon?: string;
 					user_id: string;
-					color?: string | null;
-					created_at?: string;
 				};
 				Update: {
+					color?: string | null;
+					created_at?: string;
+					icon?: string;
 					id?: string;
 					name?: string;
 					type?: "income" | "expense";
-					icon?: string;
 					user_id?: string;
-					color?: string | null;
-					created_at?: string;
 				};
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: "categories_user_id_fkey";
+						columns: ["user_id"];
+						isOneToOne?: true;
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
 			};
 			transactions: {
 				Row: {
-					id: string;
 					amount: number;
-					type: "income" | "expense";
 					category_id: string | null;
-					user_id: string;
+					created_at: string;
+					currency_code: string;
+					id: string;
+					notes: string | null;
 					occurred_on: string;
 					payment_method: "cash" | "card" | "transfer" | "other";
-					notes: string | null;
-					created_at: string;
+					type: "income" | "expense";
+					user_id: string;
 				};
 				Insert: {
-					id?: string;
 					amount: number;
-					type: "income" | "expense";
-					category_id: string | null;
-					user_id: string;
+					category_id?: string | null;
+					created_at?: string;
+					currency_code?: string;
+					id?: string;
+					notes?: string | null;
 					occurred_on: string;
 					payment_method: "cash" | "card" | "transfer" | "other";
-					notes?: string | null;
-					created_at?: string;
+					type: "income" | "expense";
+					user_id: string;
 				};
 				Update: {
-					id?: string;
 					amount?: number;
-					type?: "income" | "expense";
 					category_id?: string | null;
-					user_id?: string;
+					created_at?: string;
+					currency_code?: string;
+					id?: string;
+					notes?: string | null;
 					occurred_on?: string;
 					payment_method?: "cash" | "card" | "transfer" | "other";
-					notes?: string | null;
+					type?: "income" | "expense";
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "transactions_category_id_fkey";
+						columns: ["category_id"];
+						referencedRelation: "categories";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "transactions_user_id_fkey";
+						columns: ["user_id"];
+						isOneToOne?: true;
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+			user_settings: {
+				Row: {
+					created_at: string;
+					currency_code: string;
+					display_name: string | null;
+					updated_at: string;
+					user_id: string;
+				};
+				Insert: {
 					created_at?: string;
+					currency_code?: string;
+					display_name?: string | null;
+					updated_at?: string;
+					user_id: string;
+				};
+				Update: {
+					created_at?: string;
+					currency_code?: string;
+					display_name?: string | null;
+					updated_at?: string;
+					user_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "user_settings_user_id_fkey";
+						columns: ["user_id"];
+						isOneToOne?: true;
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
+			};
+		};
+		Views: {
+			monthly_totals: {
+				Row: {
+					month: string | null;
+					total_amount: number | null;
+					type: "income" | "expense" | null;
+				};
+				Relationships: [];
+			};
+			v_budget_summary: {
+				Row: {
+					budget_amount: number | null;
+					category_id: string | null;
+					month: string | null;
+					spent_amount: number | null;
+					user_id: string | null;
 				};
 				Relationships: [];
 			};
 		};
-		Views: Record<string, never>;
-		Functions: Record<string, never>;
+		Functions: {
+			rpc_copy_budgets: {
+				Args: {
+					p_from_month: string;
+					p_to_month: string;
+				};
+				Returns: number;
+			};
+			rpc_get_budget_summary: {
+				Args: {
+					p_month: string;
+				};
+				Returns: {
+					category_id: string;
+					budget_amount: number;
+					spent_amount: number;
+					remaining_amount: number;
+					used_pct: number;
+				}[];
+			};
+		};
 		Enums: Record<string, never>;
+		CompositeTypes: Record<string, never>;
 	};
 };
 
@@ -85,64 +224,28 @@ function requireEnv(key: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_ANON
 	return value;
 }
 
-export async function createSupabaseServerComponentClient() {
-	const cookieStore = await cookies();
+export function createSupabaseServerComponentClient() {
+	const cookieStore = cookies();
 
 	return createServerClient<Database>(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
 		cookies: {
-			get(name: string) {
-				return cookieStore.get(name)?.value;
+			async getAll() {
+				return (await cookieStore).getAll();
 			},
-			set() {
-				// No-op: server components cannot mutate cookies.
-			},
-			remove() {
-				// No-op: server components cannot mutate cookies.
+			// server components can't mutate cookies; no-op is fine
+			setAll() {
+				/* no-op */
 			},
 		},
 	});
 }
 
-export async function createSupabaseServerActionClient() {
-	const cookieStore = await cookies();
-	const mutable = cookieStore as unknown as {
-		get?: (name: string) => { value: string } | undefined;
-		set?: (name: string, value: string, options?: CookieOptions) => void;
-		delete?: (name: string, options?: CookieOptions) => void;
-	};
-
+export function createSupabaseServerActionClient(): SupabaseClient<Database> {
+	const store = cookies();
 	return createServerClient<Database>(requireEnv("NEXT_PUBLIC_SUPABASE_URL"), requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
 		cookies: {
-			get(name: string) {
-				return mutable.get ? mutable.get(name)?.value : undefined;
-			},
-			set(name: string, value: string, options: CookieOptions) {
-				if (!mutable.set) {
-					return;
-				}
-				try {
-					mutable.set(name, value, options);
-				} catch {
-					// ignore read-only errors
-				}
-			},
-			remove(name: string, options: CookieOptions) {
-				if (mutable.delete) {
-					try {
-						mutable.delete(name, options);
-						return;
-					} catch {
-						// ignore read-only errors
-					}
-				}
-				if (mutable.set) {
-					try {
-						mutable.set(name, "", { ...options, expires: new Date(0) });
-					} catch {
-						// ignore read-only errors
-					}
-				}
-			},
+			getAll: async () => (await store).getAll(),
+			setAll: (toSet) => toSet.forEach(async (c) => (await store).set(c.name, c.value, c.options)),
 		},
 	});
 }
