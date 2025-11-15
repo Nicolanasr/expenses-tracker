@@ -59,6 +59,7 @@ const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 const MS_IN_DAY = 1000 * 60 * 60 * 24;
+const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
 
 function inclusiveDayDiff(start: Date, end: Date) {
     const diff = Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY);
@@ -79,6 +80,17 @@ function parseParam(
         return raw[0];
     }
     return raw;
+}
+
+function parseCategoryParams(params: SearchParams, key: string) {
+    const raw = params?.[key];
+    if (!raw) {
+        return [];
+    }
+    if (Array.isArray(raw)) {
+        return raw.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    }
+    return raw.trim().length ? [raw] : [];
 }
 
 function getMonthKey(date: Date) {
@@ -336,7 +348,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
     const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
-    const categoryId = parseParam(resolvedSearchParams, 'category');
+    const categoryNames = parseCategoryParams(resolvedSearchParams, 'category');
     const paymentMethod = parseParam(resolvedSearchParams, 'payment');
     const search = parseParam(resolvedSearchParams, 'search');
     const intervalParam = parseParam(resolvedSearchParams, 'interval');
@@ -347,6 +359,22 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             : intervalParam === 'day'
                 ? 'day'
                 : 'month';
+
+    const { data: categoryRows, error: categoriesError } = await supabase
+        .from('categories')
+        .select('id, name, type, icon, color')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+
+    if (categoriesError) {
+        throw categoriesError;
+    }
+
+    const categories = (categoryRows ?? []) as CategoryRow[];
+    const nameToId = new Map(categories.map((category) => [category.name, category.id]));
+    const selectedCategoryIds = categoryNames
+        .map((name) => nameToId.get(name))
+        .filter((value): value is string => Boolean(value));
 
     const currencyFormatter = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -377,8 +405,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .gte('occurred_on', rangeStart)
             .lte('occurred_on', rangeEnd);
 
-        if (categoryId) {
-            query = query.eq('category_id', categoryId);
+        if (selectedCategoryIds.length) {
+            query = query.in('category_id', selectedCategoryIds);
         }
         if (paymentMethod && isPaymentMethod(paymentMethod)) {
             query = query.eq('payment_method', paymentMethod);
@@ -396,23 +424,11 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         end,
     );
 
-    const [
-        categoriesResponse,
-        currentTransactionsResponse,
-        previousTransactionsResponse,
-    ] = await Promise.all([
-        supabase
-            .from('categories')
-            .select('id, name, type, icon, color')
-            .eq('user_id', user.id)
-            .order('name', { ascending: true }),
+    const [currentTransactionsResponse, previousTransactionsResponse] = await Promise.all([
         buildTransactionsQuery(start, end),
         buildTransactionsQuery(previousStart, previousEnd),
     ]);
 
-    if (categoriesResponse.error) {
-        throw categoriesResponse.error;
-    }
     if (currentTransactionsResponse.error) {
         throw currentTransactionsResponse.error;
     }
@@ -420,7 +436,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         throw previousTransactionsResponse.error;
     }
 
-    const categories = (categoriesResponse.data ?? []) as CategoryRow[];
     const transactions: TransactionRow[] =
         (currentTransactionsResponse.data ?? []) as TransactionRow[];
     const previousTransactions: TransactionRow[] =
@@ -444,6 +459,28 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         transactions,
         currencyCode,
     );
+    const totalTransactionsCount = normalizedTransactions.length;
+    const paginatedTotalPages = Math.max(
+        1,
+        Math.ceil(totalTransactionsCount / DEFAULT_TRANSACTIONS_PAGE_SIZE),
+    );
+    const parsedPageParam = pageParam ? Number(pageParam) : 1;
+    const initialPage = Math.min(
+        paginatedTotalPages,
+        Math.max(1, Number.isNaN(parsedPageParam) ? 1 : Math.floor(parsedPageParam)),
+    );
+    const initialTransactionsPage = normalizedTransactions.slice(
+        (initialPage - 1) * DEFAULT_TRANSACTIONS_PAGE_SIZE,
+        initialPage * DEFAULT_TRANSACTIONS_PAGE_SIZE,
+    );
+    const transactionsListFilters = {
+        start,
+        end,
+        categoryIds: selectedCategoryIds.length ? selectedCategoryIds : undefined,
+        paymentMethod: paymentMethod ?? undefined,
+        search: search ?? undefined,
+        sort: 'recent',
+    };
     const previousNormalizedTransactions = normalizeTransactions(
         previousTransactions,
         currencyCode,
@@ -552,7 +589,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     initialFilters={{
                         start: start ?? '',
                         end: end ?? '',
-                        categoryId: categoryId ?? '',
+                        categoryNames,
                         paymentMethod: paymentMethod ?? '',
                         search: search ?? '',
                     }}
@@ -588,8 +625,14 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     <CategoryPieChart data={categoryBreakdown} />
                 </section>
                 <TransactionsPaginatedList
-                    transactions={normalizedTransactions}
+                    initialTransactions={initialTransactionsPage}
+                    totalCount={totalTransactionsCount}
+                    pageSize={DEFAULT_TRANSACTIONS_PAGE_SIZE}
+                    page={initialPage}
+                    filters={transactionsListFilters}
                     categories={categoryOptionsForEditing}
+                    title="Transactions"
+                    emptyMessage="No transactions for this period yet."
                 />
             </main>
         </div>

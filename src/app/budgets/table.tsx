@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
 
-import { saveBudgetsAction, upsertBudgetAction } from "./actions";
+import { saveBudgetsAction } from "./actions";
 
 type Category = {
     id: string;

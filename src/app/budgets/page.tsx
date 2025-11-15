@@ -6,7 +6,7 @@ import { getBudgetSummary, getCategorySpendMap } from "@/lib/budgets";
 import { MonthSelector } from "@/app/budgets/_components/month-selector";
 import { CopyBudgetsButton } from "@/app/budgets/_components/copy-budgets-button";
 import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
-import { currentCycleKeyForDate, getCycleRange, shiftMonth } from "@/lib/pay-cycle";
+import { currentCycleKeyForDate, getCycleRange } from "@/lib/pay-cycle";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -60,7 +60,6 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 		.sort(([a], [b]) => (a > b ? -1 : 1))
 		.map(([key, total]) => ({ month: key, totalCents: total }));
 	const cycleRange = getCycleRange(month, payCycleStartDay);
-	const prevMonth = shiftMonth(month, -1);
 	const rangeFormatter = new Intl.DateTimeFormat("en-US", {
 		month: "short",
 		day: "numeric",

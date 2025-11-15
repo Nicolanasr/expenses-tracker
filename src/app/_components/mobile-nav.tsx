@@ -6,6 +6,7 @@ import { useState } from 'react';
 
 import { SignOutButton } from '@/app/_components/sign-out-button';
 import { FaRegUser } from 'react-icons/fa';
+import Image from 'next/image';
 
 const NAV_ITEMS = [
     { href: '/', label: 'Overview' },
@@ -22,13 +23,18 @@ export function MobileNav() {
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className="mx-auto flex max-w-xl flex-col gap-4 px-5 py-4">
                 <div className="flex items-center justify-between gap-3">
-                    <div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">
-                            Expense Tracker
-                        </p>
-                        <h1 className="text-lg font-semibold text-slate-900">
-                            Stay on top of your money
-                        </h1>
+                    <div className="flex gap-0 items-center">
+                        <div>
+                            <Image src="/expenseo-logo-removebg-preview.png" alt='logo' width={50} height={50} className='object-contain' />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">
+                                Expenseo
+                            </p>
+                            <h1 className="text-lg font-semibold text-slate-900">
+                                Stay on top of your money
+                            </h1>
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="relative">

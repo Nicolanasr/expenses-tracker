@@ -1,13 +1,8 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import {
-    useCallback,
-    useEffect,
-    useMemo,
-    useState,
-    useTransition,
-} from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import Select, { components, type GroupBase, type MultiValue, type OptionProps, type StylesConfig } from 'react-select';
 import { MdFilterAlt, MdFilterAltOff } from "react-icons/md";
 
 type CategoryOption = {
@@ -21,7 +16,7 @@ type DashboardFiltersProps = {
     initialFilters: {
         start?: string;
         end?: string;
-        categoryId?: string;
+        categoryNames?: string[];
         paymentMethod?: string;
         search?: string;
     };
@@ -84,7 +79,9 @@ export function DashboardFilters({
 
     const [startDate, setStartDate] = useState(initialFilters.start ?? '');
     const [endDate, setEndDate] = useState(initialFilters.end ?? '');
-    const [categoryId, setCategoryId] = useState(initialFilters.categoryId ?? '');
+    const [categoryNames, setCategoryNames] = useState<string[]>(
+        initialFilters.categoryNames ?? [],
+    );
     const [paymentMethod, setPaymentMethod] = useState<string>(
         initialFilters.paymentMethod ?? '',
     );
@@ -102,7 +99,7 @@ export function DashboardFilters({
 
             setStartDate(initialFilters.start ?? '');
             setEndDate(initialFilters.end ?? '');
-            setCategoryId(initialFilters.categoryId ?? '');
+            setCategoryNames(initialFilters.categoryNames ?? []);
             setPaymentMethod(initialFilters.paymentMethod ?? '');
             setSearch(initialFilters.search ?? '');
         }, 0);
@@ -111,7 +108,7 @@ export function DashboardFilters({
     }, [
         initialFilters.start,
         initialFilters.end,
-        initialFilters.categoryId,
+        initialFilters.categoryNames,
         initialFilters.paymentMethod,
         initialFilters.search,
     ]);
@@ -121,6 +118,109 @@ export function DashboardFilters({
         const income = categories.filter((category) => category.type === 'income');
         return { expense, income };
     }, [categories]);
+
+    type CategorySelectOption = { value: string; label: string };
+
+    const groupedSelectOptions = useMemo<GroupBase<CategorySelectOption>[]>(() => {
+        const groups: GroupBase<CategorySelectOption>[] = [];
+        if (categoryOptions.expense.length) {
+            groups.push({
+                label: 'Expenses',
+                options: categoryOptions.expense.map((category) => ({
+                    value: category.name,
+                    label: category.name,
+                })),
+            });
+        }
+        if (categoryOptions.income.length) {
+            groups.push({
+                label: 'Income',
+                options: categoryOptions.income.map((category) => ({
+                    value: category.name,
+                    label: category.name,
+                })),
+            });
+        }
+        return groups;
+    }, [categoryOptions.expense, categoryOptions.income]);
+
+    const flattenedCategoryOptions = useMemo(() => groupedSelectOptions.flatMap((group) => group.options), [groupedSelectOptions]);
+    const selectValue = useMemo(() => flattenedCategoryOptions.filter((option) => categoryNames.includes(option.value)), [flattenedCategoryOptions, categoryNames]);
+    const allSelected = flattenedCategoryOptions.length > 0 && categoryNames.length === flattenedCategoryOptions.length;
+
+    const handleCategorySelect = useCallback(
+        (options: MultiValue<CategorySelectOption>) => {
+            if (options.some((option) => option.value === '__all__')) {
+                setCategoryNames(flattenedCategoryOptions.map((option) => option.value));
+                return;
+            }
+            setCategoryNames(options.map((option) => option.value));
+        },
+        [flattenedCategoryOptions],
+    );
+
+    const handleSelectAll = useCallback(() => {
+        if (allSelected) {
+            setCategoryNames([]);
+        } else {
+            setCategoryNames(flattenedCategoryOptions.map((option) => option.value));
+        }
+    }, [allSelected, flattenedCategoryOptions]);
+
+    const selectOptions = useMemo(
+        () =>
+            [
+                { value: '__all__', label: 'Select all categories' },
+                ...groupedSelectOptions,
+            ] as (CategorySelectOption | GroupBase<CategorySelectOption>)[],
+        [groupedSelectOptions],
+    );
+
+    const selectComponents = useMemo(
+        () => ({
+            Option: (props: OptionProps<CategorySelectOption, true>) => {
+                const isSelectAll = props.data.value === '__all__';
+                return (
+                    <components.Option {...props}>
+                        <span className={isSelectAll ? 'font-semibold text-slate-900' : ''}>{props.children}</span>
+                    </components.Option>
+                );
+            },
+        }),
+        [],
+    );
+
+    const selectStyles = useMemo<StylesConfig<CategorySelectOption, true>>(
+        () => ({
+            control: (base, state) => ({
+                ...base,
+                borderRadius: '0.75rem',
+                borderColor: state.isFocused ? '#818cf8' : '#d1d5db',
+                minHeight: '2.75rem',
+                boxShadow: 'none',
+                '&:hover': {
+                    borderColor: '#818cf8',
+                },
+            }),
+            multiValue: (base) => ({
+                ...base,
+                borderRadius: '9999px',
+                backgroundColor: '#eef2ff',
+            }),
+            multiValueLabel: (base) => ({
+                ...base,
+                color: '#4338ca',
+                fontWeight: 600,
+            }),
+            option: (base, state) => ({
+                ...base,
+                backgroundColor: state.isSelected ? '#eef2ff' : state.isFocused ? '#f8fafc' : undefined,
+                color: state.isSelected ? '#4338ca' : '#0f172a',
+                fontWeight: state.data.value === '__all__' ? 600 : 500,
+            }),
+        }),
+        [],
+    );
 
     const applyFilters = useCallback(() => {
         const next = new URLSearchParams(searchParams.toString());
@@ -132,7 +232,9 @@ export function DashboardFilters({
 
         if (startDate) next.set('start', startDate);
         if (endDate) next.set('end', endDate);
-        if (categoryId) next.set('category', categoryId);
+        if (categoryNames.length) {
+            categoryNames.forEach((name) => next.append('category', name));
+        }
         if (paymentMethod) next.set('payment', paymentMethod);
         if (search.trim()) next.set('search', search.trim());
 
@@ -145,7 +247,7 @@ export function DashboardFilters({
     }, [
         startDate,
         endDate,
-        categoryId,
+        categoryNames,
         paymentMethod,
         search,
         pathname,
@@ -164,7 +266,7 @@ export function DashboardFilters({
         const [presetStart, presetEnd] = presets[0].getRange();
         setStartDate(toInputValue(presetStart));
         setEndDate(toInputValue(presetEnd));
-        setCategoryId('');
+        setCategoryNames([]);
         setPaymentMethod('');
         setSearch('');
 
@@ -289,33 +391,25 @@ export function DashboardFilters({
                             </div>
 
                             <div className="grid gap-2">
-                                <p className="text-sm font-semibold text-slate-900">Category</p>
-                                <select
-                                    name="categoryId"
-                                    value={categoryId}
-                                    onChange={(event) => setCategoryId(event.target.value)}
-                                    className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-                                >
-                                    <option value="">All categories</option>
-                                    {categoryOptions.expense.length ? (
-                                        <optgroup label="Expenses">
-                                            {categoryOptions.expense.map((category) => (
-                                                <option key={category.id} value={category.id}>
-                                                    {category.name}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ) : null}
-                                    {categoryOptions.income.length ? (
-                                        <optgroup label="Income">
-                                            {categoryOptions.income.map((category) => (
-                                                <option key={category.id} value={category.id}>
-                                                    {category.name}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ) : null}
-                                </select>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-semibold text-slate-900">Categories</p>
+                                        <p className="text-xs text-slate-500">Click to choose multiple categories. Leave empty for all.</p>
+                                    </div>
+                                </div>
+                                <Select
+                                    isMulti
+                                    closeMenuOnSelect={false}
+                                    hideSelectedOptions={false}
+                                    className="text-sm font-medium text-slate-900"
+                                    classNamePrefix="dashboard-select"
+                                    placeholder="All categories"
+                                    value={selectValue}
+                                    onChange={handleCategorySelect}
+                                    options={selectOptions}
+                                    components={selectComponents}
+                                    styles={selectStyles}
+                                />
                             </div>
 
                             <div className="grid gap-2">
