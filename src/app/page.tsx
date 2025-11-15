@@ -55,6 +55,12 @@ type NormalizedTransaction = {
     } | null;
 };
 
+type SavedFilter = {
+    id: string;
+    name: string;
+    query: string;
+};
+
 const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -80,6 +86,24 @@ function parseParam(
         return raw[0];
     }
     return raw;
+}
+
+function parseSavedFilters(value: unknown): SavedFilter[] {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const record = entry as Record<string, unknown>;
+            if (typeof record.id !== 'string' || typeof record.name !== 'string' || typeof record.query !== 'string') {
+                return null;
+            }
+            return {
+                id: record.id,
+                name: record.name,
+                query: record.query,
+            };
+        })
+        .filter((item): item is SavedFilter => Boolean(item));
 }
 
 function parseCategoryParams(params: SearchParams, key: string) {
@@ -317,7 +341,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
-        .select('currency_code, display_name, pay_cycle_start_day')
+        .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -339,6 +363,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         currencyCode = insertedSettings?.currency_code ?? currencyCode;
         payCycleStartDay = insertedSettings?.pay_cycle_start_day ?? payCycleStartDay;
     }
+
+    const savedFilters = parseSavedFilters(settingsData?.saved_filters);
 
     const today = new Date();
     const defaultCycleKey = currentCycleKeyForDate(today, payCycleStartDay);
@@ -586,6 +612,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 py-6">
                 <DashboardFilters
                     categories={categoryOptionsForFilters}
+                    savedFilters={savedFilters}
                     initialFilters={{
                         start: start ?? '',
                         end: end ?? '',

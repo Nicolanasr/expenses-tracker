@@ -166,12 +166,12 @@ export default async function TransactionsPage({
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
         category: transaction.categories
             ? {
-                  id: transaction.categories.id,
-                  name: transaction.categories.name,
-                  icon: transaction.categories.icon,
-                  color: transaction.categories.color,
-                  type: transaction.categories.type,
-              }
+                id: transaction.categories.id,
+                name: transaction.categories.name,
+                icon: transaction.categories.icon,
+                color: transaction.categories.color,
+                type: transaction.categories.type,
+            }
             : null,
     }));
 
@@ -214,7 +214,7 @@ export default async function TransactionsPage({
                     <CreateTransactionForm categories={categories ?? []} />
                 </section>
 
-                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                {/* <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <details>
                         <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
                             Filters
@@ -223,7 +223,7 @@ export default async function TransactionsPage({
                             <TransactionsFilters categories={categories} initialFilters={sharedInitialFilters} />
                         </div>
                     </details>
-                </section>
+                </section> */}
 
                 <TransactionsPaginatedList
                     initialTransactions={normalizedTransactions}

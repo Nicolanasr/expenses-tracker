@@ -2,6 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+export type Json =
+	| string
+	| number
+	| boolean
+	| null
+	| { [key: string]: Json | undefined }
+	| Json[];
+
 export type Database = {
 	public: {
 		Tables: {
@@ -143,6 +151,7 @@ export type Database = {
 					currency_code: string;
 					display_name: string | null;
 					pay_cycle_start_day: number;
+					saved_filters: Json;
 					updated_at: string;
 					user_id: string;
 				};
@@ -151,6 +160,7 @@ export type Database = {
 					currency_code?: string;
 					display_name?: string | null;
 					pay_cycle_start_day?: number;
+					saved_filters?: Json;
 					updated_at?: string;
 					user_id: string;
 				};
@@ -159,6 +169,7 @@ export type Database = {
 					currency_code?: string;
 					display_name?: string | null;
 					pay_cycle_start_day?: number;
+					saved_filters?: Json;
 					updated_at?: string;
 					user_id?: string;
 				};
