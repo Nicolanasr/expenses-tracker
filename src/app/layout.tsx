@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { FloatingAddButton } from '@/app/_components/fab-add-transaction';
+import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -18,11 +19,17 @@ export const metadata: Metadata = {
     description: "You smart personal expenses tracker app",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
+    const supabase = await createSupabaseServerComponentClient();
+    const {
+        data: { session },
+    } = await supabase.auth.getSession();
+    const isLoggedIn = Boolean(session);
+
     return (
         <html lang="en">
             <head>
@@ -35,7 +42,7 @@ export default function RootLayout({
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
                 {children}
-                <FloatingAddButton />
+                <FloatingAddButton visible={isLoggedIn} />
             </body>
         </html>
     );

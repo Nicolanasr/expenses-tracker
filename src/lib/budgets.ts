@@ -1,6 +1,6 @@
 import { toCents } from "@/lib/money";
 import { getCycleRange } from "@/lib/pay-cycle";
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, createSupabaseServerComponentClient } from "@/lib/supabase/server";
 
 export type BudgetRow = {
 	category_id: string;
@@ -11,7 +11,7 @@ export type BudgetRow = {
 };
 
 export async function getBudgetSummary(month: string) {
-	const supabase = await createSupabaseServerActionClient();
+	const supabase = await createSupabaseServerComponentClient();
 	const { data, error } = await supabase.rpc("rpc_get_budget_summary", { p_month: month });
 
 	if (error) {
@@ -78,7 +78,7 @@ export async function getTopBudgetUsage(month: string, limit = 5) {
 export { toCents, fromCents } from "@/lib/money";
 
 export async function getCategorySpendMap(month: string, payCycleStartDay: number) {
-	const supabase = await createSupabaseServerActionClient();
+	const supabase = await createSupabaseServerComponentClient();
 	const {
 		data: { user },
 		error: userError,

@@ -165,8 +165,6 @@ export function TransactionsPaginatedList({
 
       {errorMessage ? <p className="text-sm text-rose-600">{errorMessage}</p> : null}
 
-      {isPending ? <p className="text-xs text-slate-500">Loading transactions…</p> : null}
-
       {totalPages > 1 ? (
         <div className="flex flex-col gap-2 pt-2 text-sm">
           <div className="flex items-center justify-between">
@@ -217,6 +215,15 @@ export function TransactionsPaginatedList({
           <p className="text-center text-xs text-slate-500">
             Page {currentPage} of {totalPages}
           </p>
+        </div>
+      ) : null}
+
+      {isPending ? (
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-40 -translate-x-1/2">
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-900/95 px-4 py-2 text-xs font-semibold text-white shadow-lg">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-300" />
+            Updating transactions…
+          </div>
         </div>
       ) : null}
     </section>

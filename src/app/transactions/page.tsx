@@ -5,6 +5,7 @@ import { MobileNav } from '@/app/_components/mobile-nav';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { fetchTransactionsPage } from '@/lib/transactions/pagination';
+import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +80,6 @@ export default async function TransactionsPage({
     const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
     const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
     const categoryFilters = parseCategoryParams(resolvedSearchParams, 'category');
-    const categoryFilter = categoryFilters[0];
     const paymentFilter = parseParam(resolvedSearchParams, 'payment');
     const typeFilter = parseParam(resolvedSearchParams, 'type');
     const minAmount = parseParam(resolvedSearchParams, 'minAmount');
@@ -183,123 +183,27 @@ export default async function TransactionsPage({
         type: category.type,
     }));
 
-    const filterControls = (
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <details>
-                <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">Filters</summary>
-                <form className="mt-4 grid gap-3 sm:grid-cols-2" method="get">
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Start date</span>
-                        <input
-                            type="date"
-                            name="start"
-                            defaultValue={start}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">End date</span>
-                        <input
-                            type="date"
-                            name="end"
-                            defaultValue={end}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Category</span>
-                        <select
-                            name="category"
-                            defaultValue={categoryFilter ?? ''}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">All categories</option>
-                            {(categories ?? []).map((category) => (
-                                <option key={category.id} value={category.id}>
-                                    {category.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Payment method</span>
-                        <select
-                            name="payment"
-                            defaultValue={paymentFilter ?? ''}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">All methods</option>
-                            {PAYMENT_METHODS.map((method) => (
-                                <option key={method} value={method}>
-                                    {method}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Type</span>
-                        <select
-                            name="type"
-                            defaultValue={typeFilter ?? ''}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        >
-                            <option value="">Income & expense</option>
-                            <option value="income">Income</option>
-                            <option value="expense">Expense</option>
-                        </select>
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Min amount</span>
-                        <input
-                            type="number"
-                            step="0.01"
-                            name="minAmount"
-                            defaultValue={minAmount ?? ''}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Max amount</span>
-                        <input
-                            type="number"
-                            step="0.01"
-                            name="maxAmount"
-                            defaultValue={maxAmount ?? ''}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        />
-                    </label>
-                    <label className="text-sm font-semibold text-slate-700">
-                        <span className="mb-1 block text-xs uppercase tracking-wide text-slate-400">Sort</span>
-                        <select
-                            name="sort"
-                            defaultValue={sortParam}
-                            className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                        >
-                            {Object.entries(SORT_FIELDS).map(([value, config]) => (
-                                <option key={value} value={value}>
-                                    {config.label}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <div className="sm:col-span-2 flex gap-3">
-                        <button
-                            type="submit"
-                            className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-                        >
-                            Apply filters
-                        </button>
-                        <a
-                            href="/transactions"
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600"
-                        >
-                            Reset
-                        </a>
-                    </div>
-                </form>
-            </details>
-        </section>
-    );
+    const nameLookup = new Map(categories.map((category) => [category.id, category.name]));
+    const categoryNameSet = new Set(categories.map((category) => category.name));
+    const initialCategoryNames = categoryFilters
+        .map((entry) => {
+            if (categoryNameSet.has(entry)) {
+                return entry;
+            }
+            return nameLookup.get(entry);
+        })
+        .filter((entry): entry is string => Boolean(entry));
+
+    const sharedInitialFilters = {
+        start,
+        end,
+        categoryNames: initialCategoryNames,
+        paymentMethod: paymentFilter ?? '',
+        type: typeFilter ?? '',
+        minAmount: minAmount ?? '',
+        maxAmount: maxAmount ?? '',
+        sort: sortParam ?? 'recent',
+    };
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -308,6 +212,17 @@ export default async function TransactionsPage({
             <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
                 <section>
                     <CreateTransactionForm categories={categories ?? []} />
+                </section>
+
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <details>
+                        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
+                            Filters
+                        </summary>
+                        <div className="mt-4">
+                            <TransactionsFilters categories={categories} initialFilters={sharedInitialFilters} />
+                        </div>
+                    </details>
                 </section>
 
                 <TransactionsPaginatedList
@@ -320,7 +235,20 @@ export default async function TransactionsPage({
                     allowEditing
                     title="All transactions"
                     emptyMessage="Nothing here yet. Adjust the filters or add a transaction above."
-                    renderFilters={filterControls}
+                    renderFilters={
+                        <details>
+                            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
+                                Filters
+                            </summary>
+                            <div className="mt-4">
+                                <TransactionsFilters
+                                    categories={categories}
+                                    initialFilters={sharedInitialFilters}
+                                    compact
+                                />
+                            </div>
+                        </details>
+                    }
                 />
             </main>
         </div>
