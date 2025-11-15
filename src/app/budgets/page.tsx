@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { MobileNav } from "@/app/_components/mobile-nav";
 import BudgetTable from "@/app/budgets/table";
 import { getBudgetSummary, getCategorySpendMap } from "@/lib/budgets";
+import { MonthSelector } from "@/app/budgets/_components/month-selector";
+import { CopyBudgetsButton } from "@/app/budgets/_components/copy-budgets-button";
 import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
 import { currentCycleKeyForDate, getCycleRange, shiftMonth } from "@/lib/pay-cycle";
 
@@ -36,7 +38,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 	const defaultCycleKey = currentCycleKeyForDate(new Date(), payCycleStartDay);
 	const month = requestedMonth && MONTH_REGEX.test(requestedMonth) ? requestedMonth : defaultCycleKey;
 
-	const [{ data: categoryRows }, summary, categorySpend] = await Promise.all([
+	const [{ data: categoryRows }, summary, categorySpend, { data: budgetMonthRows }] = await Promise.all([
 		supabase
 			.from("categories")
 			.select("id, name")
@@ -45,12 +47,20 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 			.order("name", { ascending: true }),
 		getBudgetSummary(month),
 		getCategorySpendMap(month, payCycleStartDay),
+		supabase.from("budgets").select("month, amount_cents").eq("user_id", user.id),
 	]);
 
 	const categories = categoryRows ?? [];
+	const monthTotalsMap = new Map<string, number>();
+	for (const row of budgetMonthRows ?? []) {
+		monthTotalsMap.set(row.month, (monthTotalsMap.get(row.month) ?? 0) + row.amount_cents);
+	}
+	const copyFromOptions = Array.from(monthTotalsMap.entries())
+		.filter(([key]) => key !== month)
+		.sort(([a], [b]) => (a > b ? -1 : 1))
+		.map(([key, total]) => ({ month: key, totalCents: total }));
 	const cycleRange = getCycleRange(month, payCycleStartDay);
 	const prevMonth = shiftMonth(month, -1);
-	const canCopy = summary.length === 0 && month === defaultCycleKey;
 	const rangeFormatter = new Intl.DateTimeFormat("en-US", {
 		month: "short",
 		day: "numeric",
@@ -61,7 +71,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 	return (
 		<div className="min-h-screen bg-slate-50">
 			<MobileNav />
-			<main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-5 py-6">
+			<main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-6">
 				<section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
 					<div>
 						<p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">Plan ahead</p>
@@ -69,35 +79,20 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 						<p className="text-sm text-slate-500">Current cycle: {cycleLabel}</p>
 					</div>
 
-					<form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end">
-						<label className="flex flex-col text-sm font-semibold text-slate-700">
-							<span className="mb-1 text-xs uppercase tracking-wide text-slate-400">Cycle month</span>
-							<input
-								type="month"
-								name="month"
-								defaultValue={month}
-								className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-							/>
-						</label>
-						<button
-							type="submit"
-							className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
-						>
-							Update
-						</button>
-					</form>
+					<div className="flex flex-col gap-4">
+						<MonthSelector month={month} />
+						<CopyBudgetsButton month={month} months={copyFromOptions} currencyCode={currencyCode} />
+					</div>
 				</section>
 
 				<section>
 					<BudgetTable
 						month={month}
-						prevMonth={prevMonth}
 						categories={categories}
 						summary={summary}
 						categorySpend={categorySpend ?? {}}
 						currencyCode={currencyCode}
 						cycleLabel={cycleLabel}
-						canCopy={canCopy}
 					/>
 				</section>
 			</main>

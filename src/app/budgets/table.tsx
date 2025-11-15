@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
 
-import { copyBudgetsAction, upsertBudgetAction } from "./actions";
+import { saveBudgetsAction, upsertBudgetAction } from "./actions";
 
 type Category = {
     id: string;
@@ -28,30 +28,37 @@ function BudgetBar({ pct }: { pct: number }) {
 
 export default function BudgetTable({
     month,
-    prevMonth,
     categories,
     summary,
     categorySpend,
     cycleLabel,
     currencyCode,
-    canCopy,
 }: {
     month: string;
-    prevMonth: string;
     categories: Category[];
     summary: BudgetRow[];
     categorySpend: Record<string, number>;
     cycleLabel: string;
     currencyCode: string;
-    canCopy: boolean;
 }) {
-    const [copied, setCopied] = useState<number | null>(null);
     const [isPending, startTransition] = useTransition();
+    const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+        const initial: Record<string, string> = {};
+        summary.forEach((row) => {
+            initial[row.category_id] = fromCents(row.budget_cents ?? 0);
+        });
+        return initial;
+    });
+    const [banner, setBanner] = useState<string | null>(null);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setCopied(null);
-    }, [month]);
+        const reset: Record<string, string> = {};
+        summary.forEach((row) => {
+            reset[row.category_id] = fromCents(row.budget_cents ?? 0);
+        });
+        setDrafts(reset);
+        setBanner(null);
+    }, [month, summary]);
 
     const summaryMap = new Map(summary.map((row) => [row.category_id, row]));
     const hasCategories = categories.length > 0;
@@ -70,29 +77,35 @@ export default function BudgetTable({
                         <h2 className="text-base font-semibold text-slate-900">Monthly budgets</h2>
                         <p className="text-xs text-slate-500">Cycle: {cycleLabel}</p>
                     </div>
+                    <form
+                        action={(formData: FormData) =>
+                            startTransition(async () => {
+                                const payload = {
+                                    month,
+                                    items: categories.map((category) => ({
+                                        categoryId: category.id,
+                                        amount: Number(formData.get(`amount-${category.id}`) ?? drafts[category.id] ?? '0'),
+                                    })),
+                                };
 
-                    {canCopy ? (
+                                const bulk = new FormData();
+                                bulk.append('payload', JSON.stringify(payload));
+                                await saveBudgetsAction(bulk);
+                                setBanner('Budgets saved.');
+                            })
+                        }
+                        className="flex items-center gap-2"
+                    >
                         <button
-                            type="button"
-                            onClick={() =>
-                                startTransition(async () => {
-                                    const inserted = await copyBudgetsAction(prevMonth, month);
-                                    setCopied(inserted);
-                                })
-                            }
+                            type="submit"
                             disabled={isPending}
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            Copy last month
+                            Save all
                         </button>
-                    ) : null}
+                    </form>
                 </div>
-
-                {copied !== null ? (
-                    <p className="mt-3 text-xs font-medium text-slate-500">
-                        {copied === 0 ? "Nothing to copy from last month." : `${copied} categories copied from last month.`}
-                    </p>
-                ) : null}
+                {banner ? <p className="mt-2 text-xs font-medium text-emerald-600">{banner}</p> : null}
 
                 {!hasCategories ? (
                     <p className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
@@ -129,30 +142,18 @@ export default function BudgetTable({
                                         <tr key={category.id} className="border-t border-slate-100">
                                             <td className="px-3 py-3 font-medium text-slate-900">{category.name}</td>
                                             <td className="px-3 py-3">
-                                                <form
-                                                    action={(formData: FormData) =>
-                                                        startTransition(async () => {
-                                                            await upsertBudgetAction(formData);
-                                                        })
+                                                <input
+                                                    name={`amount-${category.id}`}
+                                                    value={drafts[category.id] ?? fromCents(budgetCents)}
+                                                    onChange={(event) =>
+                                                        setDrafts((prev) => ({
+                                                            ...prev,
+                                                            [category.id]: event.target.value,
+                                                        }))
                                                     }
-                                                    className="flex items-center justify-end gap-2"
-                                                >
-                                                    <input type="hidden" name="categoryId" value={category.id} />
-                                                    <input type="hidden" name="month" value={month} />
-                                                    <input
-                                                        name="amount"
-                                                        defaultValue={fromCents(budgetCents)}
-                                                        inputMode="decimal"
-                                                        className="w-24 rounded-xl border border-slate-200 px-3 py-1 text-right text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                                                    />
-                                                    <button
-                                                        type="submit"
-                                                        disabled={isPending}
-                                                        className="rounded-xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                                                    >
-                                                        Save
-                                                    </button>
-                                                </form>
+                                                    inputMode="decimal"
+                                                    className="w-24 rounded-xl border border-slate-200 px-3 py-1 text-right text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                                />
                                             </td>
                                             <td className="px-3 py-3 text-right font-mono text-sm text-slate-700">
                                                 {fromCents(spentCents)}

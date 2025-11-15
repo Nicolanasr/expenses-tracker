@@ -4,8 +4,8 @@ import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { SummaryChart } from '@/app/_components/summary-chart';
-import { TransactionItem } from '@/app/_components/transaction-item';
 import { CategoryPieChart } from '@/app/_components/category-pie-chart';
+import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 
@@ -302,16 +302,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     }
 
     const resolvedSearchParams = (await searchParams) ?? {};
-    const categoryId = parseParam(resolvedSearchParams, 'category');
-    const paymentMethod = parseParam(resolvedSearchParams, 'payment');
-    const search = parseParam(resolvedSearchParams, 'search');
-    const intervalParam = parseParam(resolvedSearchParams, 'interval');
-    const summaryInterval: 'month' | 'week' | 'day' =
-        intervalParam === 'week'
-            ? 'week'
-            : intervalParam === 'day'
-                ? 'day'
-                : 'month';
 
     const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
@@ -346,13 +336,26 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
     const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
-  const currencyFormatter = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currencyCode,
-  });
+    const categoryId = parseParam(resolvedSearchParams, 'category');
+    const paymentMethod = parseParam(resolvedSearchParams, 'payment');
+    const search = parseParam(resolvedSearchParams, 'search');
+    const intervalParam = parseParam(resolvedSearchParams, 'interval');
+    const pageParam = parseParam(resolvedSearchParams, 'page');
+    const summaryInterval: 'month' | 'week' | 'day' =
+        intervalParam === 'week'
+            ? 'week'
+            : intervalParam === 'day'
+                ? 'day'
+                : 'month';
 
-  const formatCurrencyAmount = (value: number) =>
-    currencyFormatter.format(Math.round(value));
+    const currencyFormatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currencyCode,
+    });
+
+    const formatCurrencyAmount = (value: number) =>
+        currencyFormatter.format(Math.round(value));
+
 
     const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
         let query = supabase
@@ -459,7 +462,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         summaryInterval,
     );
     const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
-    const latestTransactions = normalizedTransactions.slice(0, 8);
 
     const currentExpenseTotals = computeExpenseTotalsByCategory(
         normalizedTransactions,
@@ -557,13 +559,13 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     summaryInterval={summaryInterval}
                 />
 
-        <DashboardSummaryCards
-          totalIncome={totalIncome}
-          totalExpenses={totalExpenses}
-          balance={balance}
-          transactionCount={normalizedTransactions.length}
-          currencyCode={currencyCode}
-        />
+                <DashboardSummaryCards
+                    totalIncome={totalIncome}
+                    totalExpenses={totalExpenses}
+                    balance={balance}
+                    transactionCount={normalizedTransactions.length}
+                    currencyCode={currencyCode}
+                />
 
                 {insights.length ? (
                     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -585,35 +587,10 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     <SummaryChart interval={summaryInterval} points={timelinePoints} />
                     <CategoryPieChart data={categoryBreakdown} />
                 </section>
-
-                <section className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-base font-semibold text-slate-900">
-                            {normalizedTransactions.length
-                                ? 'Filtered transactions'
-                                : 'No transactions'}
-                        </h2>
-                        <p className="text-xs text-slate-500">
-                            Showing {latestTransactions.length} of {normalizedTransactions.length}
-                        </p>
-                    </div>
-                    {latestTransactions.length === 0 ? (
-                        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-600">
-                            Adjust filters or add new transactions to see them here.
-                        </p>
-                    ) : (
-                        <div className="space-y-3">
-                            {latestTransactions.map((transaction) => (
-                                <TransactionItem
-                                    key={transaction.id}
-                                    transaction={transaction}
-                                    categories={categoryOptionsForEditing}
-                                    enableEditing={false}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </section>
+                <TransactionsPaginatedList
+                    transactions={normalizedTransactions}
+                    categories={categoryOptionsForEditing}
+                />
             </main>
         </div>
     );
