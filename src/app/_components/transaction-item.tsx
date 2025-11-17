@@ -1,10 +1,12 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState } from 'react';
+import { useActionState, useEffect, useMemo, useState, startTransition } from 'react';
 import { useFormStatus } from 'react-dom';
+import toast from 'react-hot-toast';
 
 import {
-    deleteTransaction,
+    deleteTransactionById,
+    restoreTransaction,
     type FormState,
     updateTransaction,
 } from '@/app/actions';
@@ -240,25 +242,56 @@ function EditSubmitButton() {
 }
 
 function DeleteTransactionButton({ transactionId }: { transactionId: string }) {
-    return (
-        <form action={deleteTransaction} className="inline">
-            <input type="hidden" name="id" value={transactionId} />
-            <DeleteSubmitButton />
-        </form>
-    );
-}
-
-function DeleteSubmitButton() {
-    const { pending } = useFormStatus();
+    const [pending, setPending] = useState(false);
     return (
         <button
-            type="submit"
+            type="button"
             className="inline-flex items-center justify-center rounded-full border border-red-200 p-2 text-red-600 transition hover:border-red-300 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={pending}
-            onClick={(event) => {
-                if (!window.confirm('Delete this transaction?')) {
-                    event.preventDefault();
-                }
+            onClick={() => {
+                if (!window.confirm('Delete this transaction?')) return;
+                setPending(true);
+                startTransition(async () => {
+                    try {
+                        const deleted = await deleteTransactionById(transactionId);
+                        toast.custom((t) => (
+                            <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm shadow-lg border border-slate-200">
+                                <span className="font-semibold text-slate-900">Transaction deleted</span>
+                                <button
+                                    type="button"
+                                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600"
+                                    onClick={() => {
+                                        toast.dismiss(t.id);
+                                        if (!deleted) return;
+                                        startTransition(async () => {
+                                            try {
+                                                await restoreTransaction({
+                                                    id: deleted.id,
+                                                    amount: Number(deleted.amount ?? 0),
+                                                    occurred_on: deleted.occurred_on,
+                                                    payment_method: deleted.payment_method,
+                                                    notes: deleted.notes,
+                                                    category_id: deleted.category_id,
+                                                    type: deleted.type,
+                                                    currency_code: deleted.currency_code ?? 'USD',
+                                                });
+                                                toast.success('Transaction restored');
+                                            } catch {
+                                                toast.error('Unable to restore');
+                                            }
+                                        });
+                                    }}
+                                >
+                                    Undo
+                                </button>
+                            </div>
+                        ), { duration: 5000 });
+                    } catch {
+                        toast.error('Unable to delete transaction');
+                    } finally {
+                        setPending(false);
+                    }
+                });
             }}
             aria-label="Delete transaction"
             title="Delete transaction"

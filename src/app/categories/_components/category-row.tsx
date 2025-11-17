@@ -55,7 +55,7 @@ export function CategoryRow({ category }: CategoryRowProps) {
                     >
                         {isEditing ? "✖️" : "✏️"}
                     </button>
-                    <CategoryRemoveButton categoryId={category.id} />
+                    <CategoryRemoveButton category={category} />
                 </div>
             </div>
 

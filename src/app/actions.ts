@@ -310,3 +310,74 @@ export async function deleteTransaction(formData: FormData) {
 	revalidatePath("/");
 	revalidatePath("/transactions");
 }
+
+export async function deleteTransactionById(id: string) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	if (!user) {
+		throw new Error("Not signed in");
+	}
+
+	const { data, error } = await supabase
+		.from("transactions")
+		.delete()
+		.eq("id", id)
+		.eq("user_id", user.id)
+		.select("id, amount, occurred_on, payment_method, notes, category_id, type, currency_code")
+		.maybeSingle();
+
+	if (error) {
+		throw error;
+	}
+
+	revalidatePath("/");
+	revalidatePath("/transactions");
+	return data;
+}
+
+export async function restoreTransaction(payload: {
+	id: string;
+	amount: number;
+	occurred_on: string;
+	payment_method: "cash" | "card" | "transfer" | "other";
+	notes: string | null;
+	category_id: string | null;
+	type: "income" | "expense";
+	currency_code: string;
+}) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	if (!user) {
+		throw new Error("Not signed in");
+	}
+
+	const { error } = await supabase
+		.from("transactions")
+		.upsert(
+			{
+				id: payload.id,
+				amount: payload.amount,
+				occurred_on: payload.occurred_on,
+				payment_method: payload.payment_method,
+				notes: payload.notes,
+				category_id: payload.category_id,
+				type: payload.type,
+				currency_code: payload.currency_code,
+				user_id: user.id,
+			},
+			{ onConflict: "id" },
+		);
+
+	if (error) {
+		throw error;
+	}
+
+	revalidatePath("/");
+	revalidatePath("/transactions");
+}

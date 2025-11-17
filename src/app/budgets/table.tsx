@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import toast from "react-hot-toast";
 
 import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
@@ -72,6 +73,12 @@ export default function BudgetTable({
     return (
         <>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                {isPending ? (
+                    <div className="mb-3 flex items-center gap-2 text-sm text-slate-500">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-400" />
+                        Saving budgets…
+                    </div>
+                ) : null}
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="text-base font-semibold text-slate-900">Monthly budgets</h2>
@@ -80,18 +87,26 @@ export default function BudgetTable({
                     <form
                         action={(formData: FormData) =>
                             startTransition(async () => {
-                                const payload = {
-                                    month,
-                                    items: categories.map((category) => ({
+                                try {
+                                    const items = categories.map((category) => ({
                                         categoryId: category.id,
                                         amount: Number(formData.get(`amount-${category.id}`) ?? drafts[category.id] ?? '0'),
-                                    })),
-                                };
+                                    }));
+                                    const invalid = items.find((item) => Number.isNaN(item.amount) || item.amount < 0);
+                                    if (invalid) {
+                                        toast.error('Budget amounts must be zero or greater.');
+                                        return;
+                                    }
+                                    const payload = { month, items };
 
-                                const bulk = new FormData();
-                                bulk.append('payload', JSON.stringify(payload));
-                                await saveBudgetsAction(bulk);
-                                setBanner('Budgets saved.');
+                                    const bulk = new FormData();
+                                    bulk.append('payload', JSON.stringify(payload));
+                                    await saveBudgetsAction(bulk);
+                                    setBanner('Budgets saved.');
+                                    toast.success('Budgets saved');
+                                } catch {
+                                    toast.error('Unable to save budgets');
+                                }
                             })
                         }
                         className="flex items-center gap-2"

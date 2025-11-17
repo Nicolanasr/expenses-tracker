@@ -8,6 +8,7 @@ import { CategoryPieChart } from '@/app/_components/category-pie-chart';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
+import { getTopBudgetUsage } from '@/lib/budgets';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,13 +65,7 @@ type SavedFilter = {
 const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-const MS_IN_DAY = 1000 * 60 * 60 * 24;
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
-
-function inclusiveDayDiff(start: Date, end: Date) {
-    const diff = Math.floor((end.getTime() - start.getTime()) / MS_IN_DAY);
-    return diff >= 0 ? diff + 1 : 0;
-}
 
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (PAYMENT_METHODS as readonly string[]).includes(value);
@@ -137,10 +132,6 @@ function getWeekStart(date: Date) {
     copy.setDate(diff);
     copy.setHours(0, 0, 0, 0);
     return copy;
-}
-
-function toISODate(date: Date) {
-    return date.toISOString().slice(0, 10);
 }
 
 function formatWeekLabel(start: Date) {
@@ -286,47 +277,6 @@ function computeCategoryBreakdown(transactions: NormalizedTransaction[]) {
     return result;
 }
 
-function computeExpenseTotalsByCategory(transactions: NormalizedTransaction[]) {
-    const totals = new Map<
-        string,
-        { id: string; name: string; amount: number; color: string | null }
-    >();
-
-    transactions
-        .filter((transaction) => transaction.type === 'expense')
-        .forEach((transaction) => {
-            const key = transaction.category?.id ?? '__uncategorised__';
-            if (!totals.has(key)) {
-                totals.set(key, {
-                    id: key,
-                    name: transaction.category?.name ?? 'Uncategorised',
-                    amount: 0,
-                    color: transaction.category?.color ?? '#94a3b8',
-                });
-            }
-            totals.get(key)!.amount += transaction.amount;
-        });
-
-    return totals;
-}
-
-function getPreviousRange(startISO: string, endISO: string) {
-    const startDate = new Date(startISO);
-    const endDate = new Date(endISO);
-    const totalDays = Math.max(1, inclusiveDayDiff(startDate, endDate));
-
-    const previousEnd = new Date(startDate);
-    previousEnd.setDate(previousEnd.getDate() - 1);
-
-    const previousStart = new Date(previousEnd);
-    previousStart.setDate(previousStart.getDate() - (totalDays - 1));
-
-    return {
-        start: toISODate(previousStart),
-        end: toISODate(previousEnd),
-    };
-}
-
 export default async function OverviewPage({ searchParams }: PageProps) {
     const supabase = await createSupabaseServerComponentClient();
     const {
@@ -402,15 +352,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         .map((name) => nameToId.get(name))
         .filter((value): value is string => Boolean(value));
 
-    const currencyFormatter = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currencyCode,
-    });
-
-    const formatCurrencyAmount = (value: number) =>
-        currencyFormatter.format(Math.round(value));
-
-
     const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
         let query = supabase
             .from('transactions')
@@ -445,27 +386,15 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         return query.order('occurred_on', { ascending: false });
     };
 
-    const { start: previousStart, end: previousEnd } = getPreviousRange(
-        start,
-        end,
-    );
-
-    const [currentTransactionsResponse, previousTransactionsResponse] = await Promise.all([
+    const [currentTransactionsResponse] = await Promise.all([
         buildTransactionsQuery(start, end),
-        buildTransactionsQuery(previousStart, previousEnd),
     ]);
 
     if (currentTransactionsResponse.error) {
         throw currentTransactionsResponse.error;
     }
-    if (previousTransactionsResponse.error) {
-        throw previousTransactionsResponse.error;
-    }
-
     const transactions: TransactionRow[] =
         (currentTransactionsResponse.data ?? []) as TransactionRow[];
-    const previousTransactions: TransactionRow[] =
-        (previousTransactionsResponse.data ?? []) as TransactionRow[];
 
     const categoryOptionsForFilters = categories.map((category) => ({
         id: category.id,
@@ -507,11 +436,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         search: search ?? undefined,
         sort: 'recent',
     };
-    const previousNormalizedTransactions = normalizeTransactions(
-        previousTransactions,
-        currencyCode,
-    );
-
     const totalIncome = normalizedTransactions
         .filter((transaction) => transaction.type === 'income')
         .reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -526,84 +450,9 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     );
     const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
 
-    const currentExpenseTotals = computeExpenseTotalsByCategory(
-        normalizedTransactions,
-    );
-    const previousExpenseTotals = computeExpenseTotalsByCategory(
-        previousNormalizedTransactions,
-    );
-
-    const insights: string[] = [];
-
-    const categoryChanges = Array.from(currentExpenseTotals.values())
-        .map((current) => {
-            const previousAmount = previousExpenseTotals.get(current.id)?.amount ?? 0;
-            const diff = current.amount - previousAmount;
-            const ratio = previousAmount > 0 ? diff / previousAmount : Infinity;
-            return {
-                id: current.id,
-                name: current.name,
-                diff,
-                ratio,
-                current: current.amount,
-                previous: previousAmount,
-            };
-        })
-        .filter((entry) => entry.diff > 0 && entry.current > 25)
-        .sort((a, b) => {
-            const ratioDiff = (b.ratio === Infinity ? 999 : b.ratio) - (a.ratio === Infinity ? 999 : a.ratio);
-            if (ratioDiff !== 0) {
-                return ratioDiff;
-            }
-            return b.diff - a.diff;
-        })
-        .slice(0, 3);
-
-    categoryChanges.forEach((entry) => {
-        if (entry.ratio === Infinity) {
-            insights.push(
-                `${entry.name} is a new expense this period at ${formatCurrencyAmount(entry.current)}.`,
-            );
-        } else if (entry.ratio >= 0.15) {
-            insights.push(
-                `${entry.name} spending increased by ${Math.round(entry.ratio * 100)}% (${formatCurrencyAmount(entry.previous)} → ${formatCurrencyAmount(entry.current)}).`,
-            );
-        }
-    });
-
-    if (categoryBreakdown.length) {
-        const topCategory = categoryBreakdown[0];
-        insights.push(
-            `${topCategory.label} is your top spending category this period at ${formatCurrencyAmount(topCategory.amount)}.`,
-        );
-    }
-
-    if (totalIncome > 0) {
-        const ratio = totalExpenses / totalIncome;
-        if (ratio >= 0.9) {
-            insights.push(
-                `Expenses account for ${Math.round(ratio * 100)}% of your income. Consider reducing discretionary spending.`,
-            );
-        }
-    }
-
-    const rangeStartDate = new Date(start);
-    const rangeEndDate = new Date(end);
-    const totalPeriodDays = Math.max(1, inclusiveDayDiff(rangeStartDate, rangeEndDate));
-    const todayDate = new Date();
-    const observedEnd = todayDate < rangeEndDate ? todayDate : rangeEndDate;
-    const observedDays = Math.max(1, inclusiveDayDiff(rangeStartDate, observedEnd));
-
-    if (observedDays < totalPeriodDays && totalExpenses > 0) {
-        const projectedExpenses = (totalExpenses / observedDays) * totalPeriodDays;
-        if (projectedExpenses > totalExpenses + 50) {
-            insights.push(
-                `At the current pace you may spend about ${formatCurrencyAmount(
-                    projectedExpenses,
-                )} on expenses this period (currently ${formatCurrencyAmount(totalExpenses)}).`,
-            );
-        }
-    }
+    const budgetUsage = await getTopBudgetUsage(defaultCycleKey, 50);
+    const topBudgetDisplay = budgetUsage.slice(0, 3);
+    const remainingBudgets = budgetUsage.slice(3);
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -631,19 +480,69 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     currencyCode={currencyCode}
                 />
 
-                {insights.length ? (
+                {budgetUsage.length ? (
                     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 className="text-base font-semibold text-slate-900">
-                            Smart insights
-                        </h2>
-                        <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                            {insights.map((insight, index) => (
-                                <li key={index} className="flex items-start gap-2">
-                                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-400" />
-                                    <span>{insight}</span>
-                                </li>
-                            ))}
-                        </ul>
+                        <h2 className="text-base font-semibold text-slate-900">Budget health</h2>
+                        <p className="text-xs text-slate-500">Top categories by % used this cycle.</p>
+                        <div className="mt-3 space-y-2">
+                            {topBudgetDisplay.map((row) => {
+                                const pct = Math.round(row.used_pct ?? 0);
+                                const pctLabel = `${pct}%`;
+                                const barColor =
+                                    pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+                                return (
+                                    <div key={row.category_id} className="space-y-1 rounded-xl border border-slate-100 p-3">
+                                        <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
+                                            <span>{categories.find((c) => c.id === row.category_id)?.name ?? 'Category'}</span>
+                                            <span className="text-xs text-slate-500">{pctLabel}</span>
+                                        </div>
+                                        <div className="h-2 w-full rounded-full bg-slate-100">
+                                            <div
+                                                className={`h-2 rounded-full ${barColor}`}
+                                                style={{ width: `${Math.min(pct, 100)}%` }}
+                                            />
+                                        </div>
+                                        <div className="flex justify-between text-xs text-slate-500">
+                                            <span>Budget {(row.budget_cents / 100).toFixed(2)}</span>
+                                            <span>Spent {(row.spent_cents / 100).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {remainingBudgets.length ? (
+                            <details className="mt-3">
+                                <summary className="cursor-pointer text-xs font-semibold text-indigo-600">
+                                    Show all budget insights
+                                </summary>
+                                <div className="mt-2 space-y-2">
+                                    {remainingBudgets.map((row) => {
+                                        const pct = Math.round(row.used_pct ?? 0);
+                                        const pctLabel = `${pct}%`;
+                                        const barColor =
+                                            pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+                                        return (
+                                            <div key={row.category_id} className="space-y-1 rounded-xl border border-slate-100 p-3">
+                                                <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
+                                                    <span>{categories.find((c) => c.id === row.category_id)?.name ?? 'Category'}</span>
+                                                    <span className="text-xs text-slate-500">{pctLabel}</span>
+                                                </div>
+                                                <div className="h-2 w-full rounded-full bg-slate-100">
+                                                    <div
+                                                        className={`h-2 rounded-full ${barColor}`}
+                                                        style={{ width: `${Math.min(pct, 100)}%` }}
+                                                    />
+                                                </div>
+                                                <div className="flex justify-between text-xs text-slate-500">
+                                                    <span>Budget {(row.budget_cents / 100).toFixed(2)}</span>
+                                                    <span>Spent {(row.spent_cents / 100).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </details>
+                        ) : null}
                     </section>
                 ) : null}
 
@@ -651,6 +550,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     <SummaryChart interval={summaryInterval} points={timelinePoints} />
                     <CategoryPieChart data={categoryBreakdown} />
                 </section>
+
+
                 <TransactionsPaginatedList
                     initialTransactions={initialTransactionsPage}
                     totalCount={totalTransactionsCount}

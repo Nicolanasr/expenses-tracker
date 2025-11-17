@@ -7,6 +7,7 @@ import { components, type SingleValue, type OptionProps, type StylesConfig } fro
 import CreatableSelect from 'react-select/creatable';
 import { CategoryMultiSelect } from '@/app/_components/category-multi-select';
 import { saveDashboardFilter, deleteDashboardFilter, type SavedFilter as SavedFilterRecord } from '@/app/dashboard/actions';
+import toast from 'react-hot-toast';
 
 type CategoryOption = {
     id: string;
@@ -257,8 +258,10 @@ export function DashboardFilters({
                 });
                 setPresetSelection(saved.query);
                 handleApplyPreset(saved.query);
+                toast.success('Preset saved');
             } catch (error) {
                 setPresetError(error instanceof Error ? error.message : 'Unable to save preset.');
+                toast.error(error instanceof Error ? error.message : 'Unable to save preset');
             }
         });
     };
@@ -272,8 +275,11 @@ export function DashboardFilters({
             startPresetTransition(async () => {
                 try {
                     await deleteDashboardFilter({ id });
+                    setLocalPresets((prev) => prev.filter((p) => p.id !== id));
+                    toast.success('Preset removed');
                 } catch (error) {
                     console.error(error);
+                    toast.error('Unable to remove preset');
                 } finally {
                     setDeletePendingId((current) => (current === id ? null : current));
                 }

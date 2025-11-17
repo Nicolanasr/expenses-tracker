@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 
 import { type FormState, updateCategory } from '@/app/categories/actions';
 
@@ -25,8 +26,11 @@ export default function CategoryEditForm({ category, onCancel }: Props) {
   useEffect(() => {
     if (state.ok) {
       onCancel();
+      toast.success('Category updated');
+    } else if (state.error) {
+      toast.error(state.error);
     }
-  }, [state.ok, onCancel]);
+  }, [state.ok, onCancel, state.error]);
 
   return (
     <form action={formAction} className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3">

@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
+import toast from 'react-hot-toast';
 
 import { createTransaction } from '@/app/actions';
 
@@ -62,9 +63,16 @@ export function CreateTransactionForm({ categories }: Props) {
     const [paymentMethod, setPaymentMethod] = useState<
         keyof typeof PAYMENT_METHOD_LABELS
     >('card');
+    const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
         if (!state.ok) {
+            if (state.errors && Object.keys(state.errors).length) {
+                const first = Object.values(state.errors)[0]?.[0];
+                if (first) {
+                    toast.error(first);
+                }
+            }
             return;
         }
         const timeout = window.setTimeout(() => {
@@ -76,10 +84,11 @@ export function CreateTransactionForm({ categories }: Props) {
                     ? 'expense'
                     : 'income',
             );
+            toast.success('Transaction recorded');
         }, 0);
 
         return () => window.clearTimeout(timeout);
-    }, [state.ok, categories]);
+    }, [state, categories]);
 
     const defaultDate = useMemo(() => {
         const now = new Date();
@@ -116,6 +125,31 @@ export function CreateTransactionForm({ categories }: Props) {
         activeType === 'expense'
             ? categoryGroups.expense
             : categoryGroups.income;
+
+    const validateClient = useCallback(() => {
+        const errors: Record<string, string> = {};
+        const amount = Number(formRef.current?.amount?.value ?? 0);
+        if (Number.isNaN(amount) || amount <= 0) {
+            errors.amount = 'Enter an amount greater than zero.';
+        }
+        if (!selectedCategory) {
+            errors.category_id = 'Pick a category.';
+        }
+        setLocalErrors(errors);
+        if (Object.keys(errors).length) {
+            toast.error(Object.values(errors)[0] ?? 'Please fix the errors.');
+        }
+        return Object.keys(errors).length === 0;
+    }, [selectedCategory]);
+
+    const handleSubmit = useCallback(
+        (event: React.FormEvent<HTMLFormElement>) => {
+            if (!validateClient()) {
+                event.preventDefault();
+            }
+        },
+        [validateClient],
+    );
 
     useEffect(() => {
         let nextType = activeType;
@@ -179,6 +213,7 @@ export function CreateTransactionForm({ categories }: Props) {
         <form
             ref={formRef}
             action={formAction}
+            onSubmit={handleSubmit}
             className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
         >
             <div>
@@ -214,6 +249,8 @@ export function CreateTransactionForm({ categories }: Props) {
                 </div>
                 {state.errors?.amount?.length ? (
                     <p className="text-xs text-red-500">{state.errors.amount[0]}</p>
+                ) : localErrors.amount ? (
+                    <p className="text-xs text-red-500">{localErrors.amount}</p>
                 ) : null}
             </div>
 
@@ -321,6 +358,8 @@ export function CreateTransactionForm({ categories }: Props) {
                     <p className="text-xs text-red-500">
                         {state.errors.category_id[0]}
                     </p>
+                ) : localErrors.category_id ? (
+                    <p className="text-xs text-red-500">{localErrors.category_id}</p>
                 ) : null}
             </div>
 

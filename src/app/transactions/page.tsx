@@ -6,6 +6,7 @@ import { TransactionsPaginatedList } from '@/app/_components/transactions-pagina
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { fetchTransactionsPage } from '@/lib/transactions/pagination';
 import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
+import { TransactionsExportButton } from '@/app/transactions/_components/transactions-export-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -246,6 +247,9 @@ export default async function TransactionsPage({
                                     initialFilters={sharedInitialFilters}
                                     compact
                                 />
+                                <div className="mt-3 flex justify-end">
+                                    <TransactionsExportButton filters={transactionFiltersForList} />
+                                </div>
                             </div>
                         </details>
                     }

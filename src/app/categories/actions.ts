@@ -121,3 +121,61 @@ export async function deleteCategory(prevState: FormState, formData: FormData): 
 
 	return { ok: true };
 }
+
+export async function deleteCategoryById(id: string) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
+
+	if (userError || !user) {
+		throw userError ?? new Error("You must be signed in to delete categories.");
+	}
+
+	const { data, error } = await supabase.from("categories").delete().eq("id", id).eq("user_id", user.id).select("id, name, icon, color, type").maybeSingle();
+
+	if (error) {
+		throw error;
+	}
+
+	revalidatePath("/categories");
+	revalidatePath("/");
+	revalidatePath("/transactions");
+
+	return data;
+}
+
+export async function restoreCategory(category: { id: string; name: string; icon: string | null; color: string | null; type: "income" | "expense" }) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
+
+	if (userError || !user) {
+		throw userError ?? new Error("You must be signed in to restore categories.");
+	}
+
+	const { error } = await supabase
+		.from("categories")
+		.upsert(
+			{
+				id: category.id,
+				name: category.name,
+				icon: category.icon ?? "🏷️",
+				color: category.color,
+				type: category.type,
+				user_id: user.id,
+			},
+			{ onConflict: "id" },
+		);
+
+	if (error) {
+		throw error;
+	}
+
+	revalidatePath("/categories");
+	revalidatePath("/");
+	revalidatePath("/transactions");
+}
