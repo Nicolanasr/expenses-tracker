@@ -65,7 +65,6 @@ export function CategoryMultiSelect({
         () => flattened.filter((option) => value.includes(option.value)),
         [flattened, value],
     );
-    const allSelected = flattened.length > 0 && selectedOptions.length === flattened.length;
 
     const selectOptions = useMemo(
         () =>
@@ -82,14 +81,6 @@ export function CategoryMultiSelect({
             return;
         }
         onChange(next.map((option) => option.value));
-    };
-
-    const handleToggleAll = () => {
-        if (allSelected) {
-            onChange([]);
-        } else {
-            onChange(flattened.map((option) => option.value));
-        }
     };
 
     const selectComponents = useMemo(
@@ -156,15 +147,6 @@ export function CategoryMultiSelect({
                             <p className="text-xs text-slate-500">{description}</p>
                         ) : null}
                     </div>
-                    {categories.length ? (
-                        <button
-                            type="button"
-                            onClick={handleToggleAll}
-                            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600"
-                        >
-                            {allSelected ? 'Unselect all' : 'Select all'}
-                        </button>
-                    ) : null}
                 </div>
             )}
             <Select

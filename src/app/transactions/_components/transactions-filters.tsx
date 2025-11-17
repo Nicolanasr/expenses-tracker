@@ -168,7 +168,6 @@ export function TransactionsFilters({
                     value={categoryNames}
                     onChange={setCategoryNames}
                     label="Categories"
-                    description="Click to choose multiple categories. Leave empty for all."
                 />
 
                 <div className="grid gap-2">
@@ -177,11 +176,10 @@ export function TransactionsFilters({
                         <button
                             type="button"
                             onClick={() => setPaymentMethod('')}
-                            className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
-                                paymentMethod === ''
-                                    ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                    : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
-                            }`}
+                            className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${paymentMethod === ''
+                                ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                                : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
+                                }`}
                         >
                             All methods
                         </button>
@@ -192,11 +190,10 @@ export function TransactionsFilters({
                                     key={method}
                                     type="button"
                                     onClick={() => setPaymentMethod(method)}
-                                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
-                                        isActive
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                            : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
-                                    }`}
+                                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${isActive
+                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                                        : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
+                                        }`}
                                 >
                                     {method}
                                 </button>
@@ -219,11 +216,10 @@ export function TransactionsFilters({
                                     key={option.value || 'all-types'}
                                     type="button"
                                     onClick={() => setType(option.value)}
-                                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${
-                                        isActive
-                                            ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
-                                            : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
-                                    }`}
+                                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${isActive
+                                        ? 'border-indigo-500 bg-indigo-50 text-indigo-600'
+                                        : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
+                                        }`}
                                 >
                                     {option.label}
                                 </button>

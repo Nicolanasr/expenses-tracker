@@ -17,7 +17,7 @@ const deleteFilterSchema = z.object({
 	id: z.string().uuid(),
 });
 
-type SavedFilter = {
+export type SavedFilter = {
 	id: string;
 	name: string;
 	query: string;
@@ -64,10 +64,8 @@ export async function saveDashboardFilter(payload: { name: string; query: string
 		.maybeSingle();
 
 	const existing = sanitizeSavedFilters(data?.saved_filters);
-	const nextFilters: SavedFilter[] = [{ id: crypto.randomUUID(), name: parsed.name, query: parsed.query }, ...existing].slice(
-		0,
-		2,
-	);
+	const newFilter: SavedFilter = { id: crypto.randomUUID(), name: parsed.name, query: parsed.query };
+	const nextFilters: SavedFilter[] = [newFilter, ...existing];
 
 	const { error } = await supabase
 		.from("user_settings")
@@ -85,6 +83,8 @@ export async function saveDashboardFilter(payload: { name: string; query: string
 
 	revalidatePath("/");
 	revalidatePath("/transactions");
+
+	return newFilter;
 }
 
 export async function deleteDashboardFilter(payload: { id: string }) {
@@ -125,4 +125,6 @@ export async function deleteDashboardFilter(payload: { id: string }) {
 
 	revalidatePath("/");
 	revalidatePath("/transactions");
+
+	return payload.id;
 }

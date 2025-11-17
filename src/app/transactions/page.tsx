@@ -236,7 +236,7 @@ export default async function TransactionsPage({
                     title="All transactions"
                     emptyMessage="Nothing here yet. Adjust the filters or add a transaction above."
                     renderFilters={
-                        <details>
+                        <details key="transactions-key">
                             <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
                                 Filters
                             </summary>

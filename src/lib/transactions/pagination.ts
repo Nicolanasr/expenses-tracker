@@ -88,7 +88,7 @@ export async function fetchTransactionsPage(
   const sortConfig = SORT_FIELDS[sortKey as TransactionSortKey] ?? SORT_FIELDS.recent;
   query = query
     .order(sortConfig.column, { ascending: sortConfig.ascending })
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: sortConfig.ascending })
     .range(from, to);
 
   const { data, error, count } = await query;

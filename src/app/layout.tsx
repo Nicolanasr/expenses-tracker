@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { FloatingAddButton } from '@/app/_components/fab-add-transaction';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
+import { Toaster } from "react-hot-toast";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -42,6 +43,7 @@ export default async function RootLayout({
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
                 {children}
+                <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
                 <FloatingAddButton visible={isLoggedIn} />
             </body>
         </html>

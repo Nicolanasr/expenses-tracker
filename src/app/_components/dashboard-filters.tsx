@@ -1,10 +1,12 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { MdFilterAlt, MdFilterAltOff } from "react-icons/md";
+import { components, type SingleValue, type OptionProps, type StylesConfig } from 'react-select';
+import CreatableSelect from 'react-select/creatable';
 import { CategoryMultiSelect } from '@/app/_components/category-multi-select';
-import { saveDashboardFilter, deleteDashboardFilter } from '@/app/dashboard/actions';
+import { saveDashboardFilter, deleteDashboardFilter, type SavedFilter as SavedFilterRecord } from '@/app/dashboard/actions';
 
 type CategoryOption = {
     id: string;
@@ -16,6 +18,13 @@ type SavedFilter = {
     id: string;
     name: string;
     query: string;
+};
+
+type PresetOption = {
+    value: string;
+    label: string;
+    isSave?: boolean;
+    presetId?: string;
 };
 
 type DashboardFiltersProps = {
@@ -95,10 +104,24 @@ export function DashboardFilters({
         initialFilters.paymentMethod ?? '',
     );
     const [search, setSearch] = useState(initialFilters.search ?? '');
-    const [presetName, setPresetName] = useState('');
     const [presetError, setPresetError] = useState<string | null>(null);
     const [presetPending, startPresetTransition] = useTransition();
     const [deletePendingId, setDeletePendingId] = useState<string | null>(null);
+    const [presetSelection, setPresetSelection] = useState<string | null>(null);
+    const [localPresets, setLocalPresets] = useState<SavedFilter[]>(savedFilters);
+
+    useEffect(() => {
+        setLocalPresets(savedFilters);
+    }, [savedFilters]);
+
+    const presetOptions = useMemo<PresetOption[]>(() => {
+        const saved = localPresets.map((preset) => ({
+            value: preset.query,
+            label: preset.name,
+            presetId: preset.id,
+        }));
+        return saved;
+    }, [localPresets]);
 
     useEffect(() => {
         const timeout = window.setTimeout(() => {
@@ -208,11 +231,11 @@ export function DashboardFilters({
                 });
             });
         },
-        [mergeFilterParams, pathname, router, startTransition],
+        [mergeFilterParams, pathname, router],
     );
 
-    const handleSavePreset = () => {
-        const trimmedName = presetName.trim();
+    const handleSavePreset = (name: string) => {
+        const trimmedName = name.trim();
         if (!trimmedName) {
             setPresetError('Give your preset a name.');
             return;
@@ -226,25 +249,108 @@ export function DashboardFilters({
         setPresetError(null);
         startPresetTransition(async () => {
             try {
-                await saveDashboardFilter({ name: trimmedName, query: queryString });
-                setPresetName('');
+                const created = await saveDashboardFilter({ name: trimmedName, query: queryString });
+                const saved = created as SavedFilterRecord;
+                setLocalPresets((prev) => {
+                    const deduped = prev.filter((p) => p.id !== saved.id);
+                    return [saved, ...deduped];
+                });
+                setPresetSelection(saved.query);
+                handleApplyPreset(saved.query);
             } catch (error) {
                 setPresetError(error instanceof Error ? error.message : 'Unable to save preset.');
             }
         });
     };
 
-    const handleDeletePreset = (id: string) => {
-        setDeletePendingId(id);
-        startPresetTransition(async () => {
-            try {
-                await deleteDashboardFilter({ id });
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setDeletePendingId((current) => (current === id ? null : current));
+    const handleDeletePreset = useCallback(
+        (id: string, name: string) => {
+            if (!window.confirm(`Remove preset "${name}"?`)) {
+                return;
             }
-        });
+            setDeletePendingId(id);
+            startPresetTransition(async () => {
+                try {
+                    await deleteDashboardFilter({ id });
+                } catch (error) {
+                    console.error(error);
+                } finally {
+                    setDeletePendingId((current) => (current === id ? null : current));
+                }
+            });
+        },
+        [],
+    );
+
+    const presetSelectComponents = useMemo(
+        () => ({
+            Option: (props: OptionProps<PresetOption, false>) => {
+                const isSave = props.data.isSave;
+                const deletable = props.data.presetId;
+                return (
+                    <components.Option {...props}>
+                        <div className="flex items-center justify-between gap-2">
+                            <span className={isSave ? 'font-semibold text-slate-900' : ''}>{props.children}</span>
+                            {deletable ? (
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleDeletePreset(props.data.presetId!, props.data.label);
+                                    }}
+                                    disabled={presetPending && deletePendingId === props.data.presetId}
+                                    className="text-slate-400 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                    aria-label={`Delete ${props.data.label}`}
+                                >
+                                    ×
+                                </button>
+                            ) : null}
+                        </div>
+                    </components.Option>
+                );
+            },
+        }),
+        [deletePendingId, presetPending, handleDeletePreset],
+    );
+
+    const presetSelectStyles = useMemo<StylesConfig<PresetOption, false>>(
+        () => ({
+            control: (base, state) => ({
+                ...base,
+                borderRadius: 12,
+                minHeight: '44px',
+                borderColor: state.isFocused ? '#818cf8' : '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                    borderColor: '#818cf8',
+                },
+            }),
+            option: (base, state) => ({
+                ...base,
+                backgroundColor: state.isSelected ? '#eef2ff' : state.isFocused ? '#f8fafc' : undefined,
+                color: state.isSelected ? '#4338ca' : '#0f172a',
+                fontWeight: state.data.isSave ? 700 : 500,
+            }),
+        }),
+        [],
+    );
+
+    const handlePresetChange = (option: SingleValue<PresetOption>) => {
+        setPresetSelection(option?.value ?? null);
+        setPresetError(null);
+        if (!option) return;
+        if (option.isSave) {
+            handleSavePreset(option.label);
+            return;
+        }
+        handleApplyPreset(option.value);
+    };
+
+    const handleCreatePresetOption = (inputValue: string) => {
+        const name = inputValue.trim();
+        if (!name) return;
+        setPresetError(null);
+        handleSavePreset(name);
     };
 
     return (
@@ -303,63 +409,6 @@ export function DashboardFilters({
                     </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                            <p className="text-sm font-semibold text-slate-900">Saved presets</p>
-                            <p className="text-xs text-slate-500">Keep up to two favorite filter combos.</p>
-                        </div>
-                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                            <input
-                                type="text"
-                                value={presetName}
-                                onChange={(event) => setPresetName(event.target.value)}
-                                placeholder="Preset name"
-                                className="h-9 flex-1 rounded-full border border-slate-300 px-3 text-xs font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100 sm:w-40"
-                                disabled={presetPending}
-                            />
-                            <button
-                                type="button"
-                                onClick={handleSavePreset}
-                                disabled={presetPending}
-                                className="inline-flex h-9 items-center justify-center rounded-full bg-slate-900 px-4 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {presetPending ? 'Saving…' : 'Save preset'}
-                            </button>
-                        </div>
-                    </div>
-                    {presetError ? <p className="mt-2 text-xs text-rose-500">{presetError}</p> : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {savedFilters.length ? (
-                            savedFilters.map((preset) => (
-                                <div
-                                    key={preset.id}
-                                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm"
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={() => handleApplyPreset(preset.query)}
-                                        className="transition hover:text-indigo-600"
-                                    >
-                                        {preset.name}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDeletePreset(preset.id)}
-                                        disabled={presetPending && deletePendingId === preset.id}
-                                        className="text-slate-400 transition hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-60"
-                                        aria-label={`Remove ${preset.name}`}
-                                    >
-                                        ×
-                                    </button>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-xs text-slate-500">No presets saved yet.</p>
-                        )}
-                    </div>
-                </div>
-
                 {expanded ? (
                     <div className="space-y-4">
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 items-start">
@@ -407,7 +456,7 @@ export function DashboardFilters({
                                 value={categoryNames}
                                 onChange={setCategoryNames}
                                 label="Categories"
-                                description="Click to choose multiple categories. Leave empty for all."
+                                description=""
                             />
 
                             <div className="grid gap-2">
@@ -460,6 +509,30 @@ export function DashboardFilters({
                                     }}
                                     className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
                                 />
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-3">
+                                <div className="min-w-[16rem] flex-1 sm:flex-none">
+                                    <CreatableSelect
+                                        classNamePrefix="preset-select"
+                                        placeholder="Select/save filters presets"
+                                        options={presetOptions}
+                                        onChange={handlePresetChange}
+                                        onCreateOption={handleCreatePresetOption}
+                                        formatCreateLabel={(input: string) => `Save "${input}"`}
+                                        isClearable
+                                        isSearchable
+                                        value={
+                                            presetSelection
+                                                ? presetOptions.find((opt) => opt.value === presetSelection) ?? null
+                                                : null
+                                        }
+                                        components={presetSelectComponents}
+                                        styles={presetSelectStyles}
+                                        menuPlacement="bottom"
+                                    />
+                                </div>
+                                {presetError ? <p className="text-xs text-rose-500">{presetError}</p> : null}
                             </div>
                         </div>
 

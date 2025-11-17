@@ -245,9 +245,12 @@ function groupByDate(rows: Transaction[]) {
     }
     map.get(key)!.push(row);
   });
-  return Array.from(map.entries())
-    .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-    .map(([key, items]) => ({ key, label: formatter.format(new Date(key)), items }));
+  // Preserve the order from the server so pagination + sorting stay consistent.
+  return Array.from(map.entries()).map(([key, items]) => ({
+    key,
+    label: formatter.format(new Date(key)),
+    items,
+  }));
 }
 
 function buildPager(total: number, current: number) {
