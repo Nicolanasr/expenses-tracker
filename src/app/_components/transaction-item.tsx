@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useState, startTransition } from 'react';
+import { useActionState, useCallback, useEffect, useMemo, useState, startTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
 
@@ -10,6 +10,7 @@ import {
     type FormState,
     updateTransaction,
 } from '@/app/actions';
+import { queueTransactionMutation } from '@/lib/outbox-sync';
 import { MdDelete, MdModeEdit } from 'react-icons/md';
 
 const DATE = new Intl.DateTimeFormat('en-US', {
@@ -41,6 +42,7 @@ type TransactionData = {
   categoryId: string | null;
   category: CategoryOption | null;
   currencyCode: string;
+  updatedAt: string;
 };
 
 type TransactionItemProps = {
@@ -87,9 +89,25 @@ function TransactionEditForm({
     const hasExpenses = groupedCategories.expense.length > 0;
     const hasIncome = groupedCategories.income.length > 0;
 
+    const handleSubmit = useCallback(
+        (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                queueTransactionMutation({ type: 'update', data: Object.fromEntries(formData.entries()) });
+                toast.success('Saved offline — will sync when online');
+                onCancel();
+                return;
+            }
+            formAction(formData);
+        },
+        [formAction, onCancel],
+    );
+
     return (
-        <form action={formAction} className="space-y-4">
+        <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
             <input type="hidden" name="id" value={transaction.id} />
+            <input type="hidden" name="updated_at" value={transaction.updatedAt} />
             <div className="grid gap-2">
                 <label className="text-sm font-semibold text-slate-900">
                     Amount
@@ -241,7 +259,7 @@ function EditSubmitButton() {
     );
 }
 
-function DeleteTransactionButton({ transactionId }: { transactionId: string }) {
+function DeleteTransactionButton({ transactionId, updatedAt }: { transactionId: string; updatedAt: string }) {
     const [pending, setPending] = useState(false);
     return (
         <button
@@ -253,7 +271,12 @@ function DeleteTransactionButton({ transactionId }: { transactionId: string }) {
                 setPending(true);
                 startTransition(async () => {
                     try {
-                        const deleted = await deleteTransactionById(transactionId);
+                        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                            await queueTransactionMutation({ type: 'delete', data: { id: transactionId, updated_at: updatedAt } });
+                            toast.success('Queued delete — will sync when online');
+                            return;
+                        }
+                        const deleted = await deleteTransactionById(transactionId, updatedAt);
                         toast.custom((t) => (
                             <div className="flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm shadow-lg border border-slate-200">
                                 <span className="font-semibold text-slate-900">Transaction deleted</span>
@@ -362,7 +385,7 @@ export function TransactionItem({
                                     >
                                         <MdModeEdit />
                                     </button>
-                                    <DeleteTransactionButton transactionId={transaction.id} />
+                                    <DeleteTransactionButton transactionId={transaction.id} updatedAt={transaction.updatedAt || ''} />
                                 </>
                             ) : null}
                         </div>

@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
-
 import { CreateTransactionForm } from '@/app/_components/create-transaction-form';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
@@ -62,13 +60,17 @@ export default async function TransactionsPage({
     searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
     const supabase = await createSupabaseServerComponentClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect('/auth/sign-in');
+    let userId: string | null = null;
+    try {
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+        userId = user?.id ?? null;
+    } catch {
+        userId = null;
     }
+
+    const isOffline = !userId;
 
     const resolvedSearchParams = (await searchParams) ?? {};
 
@@ -101,33 +103,58 @@ export default async function TransactionsPage({
     const parsedPage = parseNumberParam(pageParam);
     const page = Math.max(1, parsedPage ? Math.floor(parsedPage) : 1);
 
-    const { data: settings } = await supabase
-        .from('user_settings')
-        .select('currency_code')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    let currencyCode = settings?.currency_code ?? 'USD';
-    if (!settings) {
-        const { data: inserted } = await supabase
+    let currencyCode = 'USD';
+    if (!isOffline && userId) {
+        const { data: settings } = await supabase
             .from('user_settings')
-            .upsert({ user_id: user.id, currency_code: currencyCode }, { onConflict: 'user_id' })
             .select('currency_code')
+            .eq('user_id', userId)
             .maybeSingle();
-        currencyCode = inserted?.currency_code ?? currencyCode;
+
+        currencyCode = settings?.currency_code ?? 'USD';
+        if (!settings) {
+            const { data: inserted } = await supabase
+                .from('user_settings')
+                .upsert({ user_id: userId, currency_code: currencyCode }, { onConflict: 'user_id' })
+                .select('currency_code')
+                .maybeSingle();
+            currencyCode = inserted?.currency_code ?? currencyCode;
+        }
     }
 
-    const { data: categoryRows, error: categoriesError } = await supabase
-        .from('categories')
-        .select('id, name, type, icon, color')
-        .eq('user_id', user.id)
-        .order('name', { ascending: true });
+    const categories: Category[] = [];
+    let paginated:
+        | {
+              rows: Array<{
+                  id: string;
+                  amount: number;
+                  type: 'income' | 'expense';
+                  currency_code: string;
+                  occurred_on: string;
+                  payment_method: 'cash' | 'card' | 'transfer' | 'other';
+                  notes: string | null;
+                  category_id: string | null;
+                  categories: Category | null;
+                  updated_at: string;
+              }>;
+              total: number;
+          }
+        | null = null;
 
-    if (categoriesError) {
-        throw categoriesError;
+    if (!isOffline) {
+        const { data: categoryRows, error: categoriesError } = await supabase
+            .from('categories')
+            .select('id, name, type, icon, color')
+            .eq('user_id', userId!)
+            .order('name', { ascending: true });
+
+        if (categoriesError) {
+            throw categoriesError;
+        }
+
+        categories.push(...((categoryRows ?? []) as Category[]));
     }
 
-    const categories = (categoryRows ?? []) as Category[];
     const nameToId = new Map(categories.map((category) => [category.name, category.id]));
     const categoryIdSet = new Set(categories.map((category) => category.id));
     const normalizedCategoryFilters = categoryFilters
@@ -150,13 +177,15 @@ export default async function TransactionsPage({
         sort: sortKey,
     };
 
-    const paginated = await fetchTransactionsPage(supabase, user.id, {
-        page,
-        pageSize: DEFAULT_TRANSACTIONS_PAGE_SIZE,
-        filters: transactionFiltersForList,
-    });
+    if (!isOffline) {
+        paginated = await fetchTransactionsPage(supabase, userId!, {
+            page,
+            pageSize: DEFAULT_TRANSACTIONS_PAGE_SIZE,
+            filters: transactionFiltersForList,
+        });
+    }
 
-    const normalizedTransactions = paginated.rows.map((transaction) => ({
+    const normalizedTransactions = (paginated?.rows ?? []).map((transaction) => ({
         id: transaction.id,
         amount: Number(transaction.amount ?? 0),
         type: transaction.type,
@@ -165,6 +194,7 @@ export default async function TransactionsPage({
         paymentMethod: transaction.payment_method,
         notes: transaction.notes,
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
+        updatedAt: transaction.updated_at,
         category: transaction.categories
             ? {
                 id: transaction.categories.id,
@@ -228,12 +258,13 @@ export default async function TransactionsPage({
 
                 <TransactionsPaginatedList
                     initialTransactions={normalizedTransactions}
-                    totalCount={paginated.total}
+                    totalCount={paginated?.total ?? 0}
                     pageSize={DEFAULT_TRANSACTIONS_PAGE_SIZE}
                     page={page}
                     filters={transactionFiltersForList}
                     categories={categoryOptions}
-                    allowEditing
+                    allowEditing={!isOffline}
+                    preferCacheOnMount={isOffline}
                     title="All transactions"
                     emptyMessage="Nothing here yet. Adjust the filters or add a transaction above."
                     renderFilters={

@@ -12,6 +12,7 @@ type CategoryRowProps = {
         icon: string | null;
         color: string | null;
         type: "income" | "expense";
+        updated_at: string;
         created_at: string;
     };
 };
@@ -66,6 +67,7 @@ export function CategoryRow({ category }: CategoryRowProps) {
                         name: category.name,
                         icon: category.icon ?? "🏷️",
                         color: category.color ?? "#4f46e5",
+                        updated_at: category.updated_at,
                     }}
                     onCancel={() => setIsEditing(false)}
                 />

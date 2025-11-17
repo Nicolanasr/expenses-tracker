@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 
 import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
+import { queueBudgetMutation } from "@/lib/outbox-sync";
 
 import { saveBudgetsAction } from "./actions";
 
@@ -85,19 +86,29 @@ export default function BudgetTable({
                         <p className="text-xs text-slate-500">Cycle: {cycleLabel}</p>
                     </div>
                     <form
-                        action={(formData: FormData) =>
+                        onSubmit={(event) => {
+                            event.preventDefault();
                             startTransition(async () => {
                                 try {
-                                    const items = categories.map((category) => ({
-                                        categoryId: category.id,
-                                        amount: Number(formData.get(`amount-${category.id}`) ?? drafts[category.id] ?? '0'),
-                                    }));
+                                    const items = categories.map((category) => {
+                                        const input = (event.currentTarget as HTMLFormElement).elements.namedItem(`amount-${category.id}`) as HTMLInputElement | null;
+                                        return {
+                                            categoryId: category.id,
+                                            amount: Number(input?.value ?? drafts[category.id] ?? '0'),
+                                        };
+                                    });
                                     const invalid = items.find((item) => Number.isNaN(item.amount) || item.amount < 0);
                                     if (invalid) {
                                         toast.error('Budget amounts must be zero or greater.');
                                         return;
                                     }
                                     const payload = { month, items };
+                                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                                        await queueBudgetMutation(payload);
+                                        toast.success('Queued offline — will sync when online');
+                                        setBanner('Queued for sync');
+                                        return;
+                                    }
 
                                     const bulk = new FormData();
                                     bulk.append('payload', JSON.stringify(payload));
@@ -107,8 +118,8 @@ export default function BudgetTable({
                                 } catch {
                                     toast.error('Unable to save budgets');
                                 }
-                            })
-                        }
+                            });
+                        }}
                         className="flex items-center gap-2"
                     >
                         <button

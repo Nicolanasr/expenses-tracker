@@ -40,6 +40,7 @@ export async function upsertBudget(input: { categoryId: string; month: string; a
 				category_id: input.categoryId,
 				month: input.month,
 				amount_cents: input.amountCents,
+				updated_at: new Date().toISOString(),
 			},
 			{ onConflict: "user_id,category_id,month" }
 		)

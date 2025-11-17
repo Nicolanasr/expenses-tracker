@@ -23,6 +23,7 @@ type CategoryMultiSelectProps = {
     description?: string;
     placeholder?: string;
     className?: string;
+    instanceId?: string;
 };
 
 type CategorySelectOption = {
@@ -38,6 +39,7 @@ export function CategoryMultiSelect({
     description,
     placeholder = 'All categories',
     className,
+    instanceId = 'category-select',
 }: CategoryMultiSelectProps) {
     const groupedOptions = useMemo<GroupBase<CategorySelectOption>[]>(() => {
         const expenseOptions = categories
@@ -155,6 +157,7 @@ export function CategoryMultiSelect({
                 hideSelectedOptions={false}
                 className="mt-2 text-sm font-medium text-slate-900"
                 classNamePrefix="category-select"
+                instanceId={instanceId}
                 placeholder={placeholder}
                 value={selectedOptions}
                 options={selectOptions}

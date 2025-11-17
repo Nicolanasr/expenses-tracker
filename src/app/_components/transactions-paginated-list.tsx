@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 
 import { TransactionItem } from '@/app/_components/transaction-item';
+import { cacheTransactions, readCachedTransactions } from '@/lib/cache';
 
 const PAGE_OPTIONS = [7, 14, 28, 56, 112];
 
@@ -14,6 +15,7 @@ export type Transaction = {
   occurredOn: string;
   paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
   notes: string | null;
+  updatedAt: string;
   categoryId: string | null;
   category: {
     id: string;
@@ -52,6 +54,7 @@ type Props = {
   filters: TransactionFilters;
   categories: CategoryOption[];
   allowEditing?: boolean;
+  preferCacheOnMount?: boolean;
   renderFilters?: React.ReactNode;
   title?: string;
   emptyMessage?: string;
@@ -65,11 +68,31 @@ export function TransactionsPaginatedList({
   filters,
   categories,
   allowEditing = false,
+  preferCacheOnMount = false,
   renderFilters,
   title = 'Filtered transactions',
   emptyMessage = 'Nothing here yet. Adjust filters or add a transaction above.',
 }: Props) {
-  const [rows, setRows] = useState(initialTransactions);
+  const categoryMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories],
+  );
+
+  const normalizeRows = useMemo(
+    () =>
+      (list: Partial<Transaction>[]) =>
+        (list ?? []).map((tx) => ({
+          ...tx,
+          updatedAt: tx.updatedAt ?? tx.occurredOn ?? new Date().toISOString(),
+          category:
+            tx.categoryId && !tx.category
+              ? (categoryMap.get(tx.categoryId) as Transaction['category']) ?? null
+              : (tx.category as Transaction['category']) ?? null,
+        })) as Transaction[],
+    [categoryMap],
+  );
+
+  const [rows, setRows] = useState<Transaction[]>(normalizeRows(initialTransactions));
   const [total, setTotal] = useState(totalCount);
   const [currentPage, setCurrentPage] = useState(page);
   const [currentPageSize, setCurrentPageSize] = useState(pageSize);
@@ -77,12 +100,98 @@ export function TransactionsPaginatedList({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setRows(initialTransactions);
+    const normalized = normalizeRows(initialTransactions);
+    setRows(normalized);
     setTotal(totalCount);
     setCurrentPage(page);
     setCurrentPageSize(pageSize);
     setErrorMessage(null);
-  }, [initialTransactions, totalCount, page, pageSize]);
+    cacheTransactions(filters, { transactions: normalized, total: totalCount }).catch(() => {});
+  }, [initialTransactions, totalCount, page, pageSize, filters, normalizeRows]);
+
+  useEffect(() => {
+    if (!preferCacheOnMount) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine) return;
+    readCachedTransactions(filters).then((cached) => {
+      const cachedData = cached as { transactions?: Transaction[]; total?: number } | null;
+      if (cachedData?.transactions?.length) {
+        const normalized = normalizeRows(cachedData.transactions);
+        setRows(normalized);
+        setTotal(cachedData.total ?? normalized.length);
+      }
+    });
+  }, [preferCacheOnMount, filters, normalizeRows]);
+
+  // Optimistically update list when we queue offline mutations
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type: string; payload: Record<string, unknown> }>).detail;
+      if (!detail?.type?.startsWith('transaction:')) return;
+      const payload = detail.payload;
+      setRows((prev) => {
+        switch (detail.type) {
+          case 'transaction:create': {
+            const id = (payload.id as string) || `temp-${Date.now()}`;
+            const categoryId = (payload.category_id as string | null | undefined) ?? null;
+            const newRow: Transaction = {
+              id,
+              amount: Number(payload.amount ?? 0),
+              type: (payload.type as Transaction['type']) ?? 'expense',
+              currencyCode: 'USD',
+              occurredOn: (payload.occurred_on as string) ?? new Date().toISOString().slice(0, 10),
+              paymentMethod: (payload.payment_method as Transaction['paymentMethod']) ?? 'card',
+              notes: (payload.notes as string) ?? null,
+              categoryId,
+              category:
+                categoryId && categoryMap.has(categoryId)
+                  ? (categoryMap.get(categoryId) as Transaction['category'])
+                  : null,
+              updatedAt: new Date().toISOString(),
+            };
+            setTotal((t) => t + 1);
+            return [newRow, ...prev];
+          }
+          case 'transaction:update': {
+            const id = payload.id as string | undefined;
+            if (!id) return prev;
+            return prev.map((row) =>
+              row.id === id
+                ? {
+                    ...row,
+                    amount: payload.amount !== undefined ? Number(payload.amount) : row.amount,
+                    occurredOn: (payload.occurred_on as string) ?? row.occurredOn,
+                    paymentMethod: (payload.payment_method as Transaction['paymentMethod']) ?? row.paymentMethod,
+                    notes: (payload.notes as string | null | undefined) ?? row.notes,
+                    categoryId: (payload.category_id as string | null | undefined) ?? row.categoryId,
+                    category:
+                      payload.category_id && categoryMap.has(payload.category_id as string)
+                        ? (categoryMap.get(payload.category_id as string) as Transaction['category'])
+                        : row.category,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : row,
+            );
+          }
+          case 'transaction:delete': {
+            const id = payload.id as string | undefined;
+            if (!id) return prev;
+            setTotal((t) => Math.max(0, t - 1));
+            return prev.filter((row) => row.id !== id);
+          }
+          default:
+            return prev;
+        }
+      });
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('outbox:queued', handler);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('outbox:queued', handler);
+      }
+    };
+  }, [categoryMap, normalizeRows]);
 
   const totalPages = Math.max(1, Math.ceil(total / currentPageSize));
   const groups = useMemo(() => groupByDate(rows), [rows]);
@@ -104,13 +213,23 @@ export function TransactionsPaginatedList({
         if (!response.ok || !data) {
           throw new Error(data?.error || 'Failed to load transactions');
         }
-        setRows(data.transactions);
+        const normalized = normalizeRows(data.transactions);
+        setRows(normalized);
         setTotal(data.total);
         setCurrentPage(nextPage);
         setCurrentPageSize(nextPageSize);
+        cacheTransactions(filters, { transactions: normalized, total: data.total }).catch(() => {});
       } catch (error) {
         console.error('Failed to load transactions page', error);
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load transactions');
+        const cached = await readCachedTransactions(filters);
+        if (cached && (cached as { transactions?: Transaction[]; total?: number }).transactions) {
+          const cachedData = cached as { transactions?: Transaction[]; total?: number };
+          setRows(normalizeRows(cachedData.transactions ?? []));
+          setTotal(cachedData.total ?? 0);
+          setErrorMessage('Showing cached data (offline)');
+        } else {
+          setErrorMessage(error instanceof Error ? error.message : 'Failed to load transactions');
+        }
       }
     });
   };

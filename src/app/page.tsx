@@ -1,11 +1,10 @@
-import { redirect } from 'next/navigation';
-
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { SummaryChart } from '@/app/_components/summary-chart';
 import { CategoryPieChart } from '@/app/_components/category-pie-chart';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
+import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 import { getTopBudgetUsage } from '@/lib/budgets';
@@ -36,6 +35,7 @@ type TransactionRow = {
     notes: string | null;
     category_id: string | null;
     categories: CategoryRow | null;
+    updated_at: string;
 };
 
 type NormalizedTransaction = {
@@ -47,6 +47,7 @@ type NormalizedTransaction = {
     paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
     notes: string | null;
     categoryId: string | null;
+    updatedAt: string;
     category: {
         id: string;
         name: string;
@@ -154,6 +155,7 @@ function normalizeTransactions(
         paymentMethod: transaction.payment_method,
         notes: transaction.notes,
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
+        updatedAt: transaction.updated_at,
         category: transaction.categories
             ? {
                 id: transaction.categories.id,
@@ -281,10 +283,11 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const supabase = await createSupabaseServerComponentClient();
     const {
         data: { user },
+        error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
-        redirect('/auth/sign-in');
+    if (userError || !user) {
+        return <OfflineFallback />;
     }
 
     const resolvedSearchParams = (await searchParams) ?? {};
@@ -364,6 +367,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         occurred_on,
         payment_method,
         notes,
+        updated_at,
         category_id,
         categories (id, name, type, icon, color)
       `,

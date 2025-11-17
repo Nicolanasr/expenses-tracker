@@ -1,6 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { MobileNav } from '@/app/_components/mobile-nav';
+import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -9,10 +8,11 @@ export default async function ProfilePage() {
   const supabase = await createSupabaseServerComponentClient();
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/auth/sign-in');
+  if (userError || !user) {
+    return <OfflineFallback />;
   }
 
   return (

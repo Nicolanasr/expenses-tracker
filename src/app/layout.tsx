@@ -4,6 +4,10 @@ import "./globals.css";
 import { FloatingAddButton } from '@/app/_components/fab-add-transaction';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { Toaster } from "react-hot-toast";
+import { OutboxSyncListener } from '@/app/_components/outbox-sync-listener';
+import { SwUpdateListener } from '@/app/_components/sw-update-listener';
+import { NetworkStatusBadge } from '@/app/_components/network-status-badge';
+import { OutboxSyncIndicator } from '@/app/_components/outbox-sync-indicator';
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -43,6 +47,10 @@ export default async function RootLayout({
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
                 {children}
+                <OutboxSyncListener />
+                <SwUpdateListener />
+                <NetworkStatusBadge />
+                <OutboxSyncIndicator />
                 <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
                 <FloatingAddButton visible={isLoggedIn} />
             </body>

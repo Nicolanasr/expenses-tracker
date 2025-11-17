@@ -1,10 +1,11 @@
 'use client';
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
 
 import { createTransaction } from '@/app/actions';
+import { queueTransactionMutation } from '@/lib/outbox-sync';
 
 type Category = {
     id: string;
@@ -144,11 +145,24 @@ export function CreateTransactionForm({ categories }: Props) {
 
     const handleSubmit = useCallback(
         (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
             if (!validateClient()) {
-                event.preventDefault();
+                return;
             }
+            const formData = new FormData(event.currentTarget);
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                queueTransactionMutation({ type: 'create', data: Object.fromEntries(formData.entries()) });
+                toast.success('Saved offline — will sync when online');
+                event.currentTarget.reset();
+                setSelectedCategory('');
+                setPaymentMethod('card');
+                return;
+            }
+            startTransition(() => {
+                formAction(formData);
+            });
         },
-        [validateClient],
+        [formAction, validateClient],
     );
 
     useEffect(() => {

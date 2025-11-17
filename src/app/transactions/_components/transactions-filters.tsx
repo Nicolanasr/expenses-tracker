@@ -167,6 +167,7 @@ export function TransactionsFilters({
                     categories={categories}
                     value={categoryNames}
                     onChange={setCategoryNames}
+                    instanceId="transactions-category-select"
                     label="Categories"
                 />
 

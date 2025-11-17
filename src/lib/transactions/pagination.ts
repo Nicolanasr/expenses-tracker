@@ -9,6 +9,7 @@ const TRANSACTION_SELECT = `
   occurred_on,
   payment_method,
   notes,
+  updated_at,
   category_id,
   categories (
     id,

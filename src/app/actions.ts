@@ -62,6 +62,7 @@ const transactionSchema = z.object({
 
 const transactionUpdateSchema = transactionSchema.extend({
 	id: z.string().uuid({ message: "Missing transaction id" }),
+	updated_at: z.string().optional(),
 });
 
 const transactionDeleteSchema = z.object({
@@ -225,6 +226,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		occurred_on: formData.get("occurred_on"),
 		payment_method: formData.get("payment_method"),
 		notes: formData.get("notes"),
+		updated_at: formData.get("updated_at"),
 	});
 
 	if (!payload.success) {
@@ -257,7 +259,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		};
 	}
 
-	const { error } = await supabase
+	let query = supabase
 		.from("transactions")
 		.update({
 			amount: payload.data.amount,
@@ -266,15 +268,29 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 			notes: payload.data.notes ?? null,
 			category_id: payload.data.category_id,
 			type: category.type,
+			updated_at: new Date().toISOString(),
 		})
 		.eq("id", payload.data.id)
 		.eq("user_id", user.id);
+
+	if (payload.data.updated_at) {
+		query = query.eq("updated_at", payload.data.updated_at);
+	}
+
+	const { data: updated, error } = await query.select("id, updated_at").maybeSingle();
 
 	if (error) {
 		console.error(error);
 		return {
 			ok: false,
 			errors: { amount: ["Unable to update transaction, try again."] },
+		};
+	}
+
+	if (!updated) {
+		return {
+			ok: false,
+			errors: { amount: ["This transaction changed elsewhere. Refresh and try again."] },
 		};
 	}
 
@@ -311,7 +327,7 @@ export async function deleteTransaction(formData: FormData) {
 	revalidatePath("/transactions");
 }
 
-export async function deleteTransactionById(id: string) {
+export async function deleteTransactionById(id: string, version?: string) {
 	const supabase = await createSupabaseServerActionClient();
 	const {
 		data: { user },
@@ -321,16 +337,21 @@ export async function deleteTransactionById(id: string) {
 		throw new Error("Not signed in");
 	}
 
-	const { data, error } = await supabase
-		.from("transactions")
-		.delete()
-		.eq("id", id)
-		.eq("user_id", user.id)
+	let query = supabase.from("transactions").delete().eq("id", id).eq("user_id", user.id);
+	if (version) {
+		query = query.eq("updated_at", version);
+	}
+
+	const { data, error } = await query
 		.select("id, amount, occurred_on, payment_method, notes, category_id, type, currency_code")
 		.maybeSingle();
 
 	if (error) {
 		throw error;
+	}
+
+	if (!data) {
+		throw new Error("Transaction not found or already changed.");
 	}
 
 	revalidatePath("/");
@@ -370,6 +391,7 @@ export async function restoreTransaction(payload: {
 				type: payload.type,
 				currency_code: payload.currency_code,
 				user_id: user.id,
+				updated_at: new Date().toISOString(),
 			},
 			{ onConflict: "id" },
 		);

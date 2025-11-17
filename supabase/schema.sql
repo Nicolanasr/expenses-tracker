@@ -9,7 +9,8 @@ create table if not exists public.categories (
   icon text not null default '🏷️',
   user_id uuid not null references auth.users (id) on delete cascade,
   color text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.user_settings (
@@ -35,7 +36,8 @@ create table if not exists public.transactions (
     payment_method in ('cash', 'card', 'transfer', 'other')
   ),
   notes text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 -- Category budgets per month stored as integer cents for precision.
@@ -46,6 +48,7 @@ create table if not exists public.budgets (
   month text not null check (month ~ '^[0-9]{4}-[0-9]{2}$'),
   amount_cents bigint not null check (amount_cents >= 0),
   created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
   unique (user_id, category_id, month)
 );
 

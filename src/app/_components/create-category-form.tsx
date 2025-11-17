@@ -1,9 +1,11 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
+import { useActionState, useEffect, useRef, useCallback } from 'react';
 import { useFormStatus } from 'react-dom';
+import toast from 'react-hot-toast';
 
 import { createCategory } from '@/app/actions';
+import { queueCategoryMutation } from '@/lib/outbox-sync';
 
 type FormState = {
   ok: boolean;
@@ -46,13 +48,32 @@ export function CreateCategoryForm() {
   useEffect(() => {
     if (state.ok) {
       formRef.current?.reset();
+      toast.success('Category saved');
+    } else if (state.errors && Object.keys(state.errors).length) {
+      const first = Object.values(state.errors)[0]?.[0];
+      if (first) toast.error(first);
     }
-  }, [state.ok]);
+  }, [state.ok, state.errors]);
+
+  const handleSubmit = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        queueCategoryMutation({ type: 'create', data: Object.fromEntries(formData.entries()) });
+        toast.success('Queued offline — will sync when online');
+        event.currentTarget.reset();
+        return;
+      }
+      formAction(formData);
+    },
+    [formAction],
+  );
 
   return (
     <form
       ref={formRef}
-      action={formAction}
+      onSubmit={handleSubmit}
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
     >
       <div>

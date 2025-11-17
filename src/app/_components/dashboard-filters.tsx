@@ -461,6 +461,7 @@ export function DashboardFilters({
                                 categories={categories}
                                 value={categoryNames}
                                 onChange={setCategoryNames}
+                                instanceId="dashboard-category-select"
                                 label="Categories"
                                 description=""
                             />

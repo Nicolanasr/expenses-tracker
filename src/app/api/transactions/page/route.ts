@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       occurredOn: transaction.occurred_on,
       paymentMethod: transaction.payment_method,
       notes: transaction.notes,
+      updatedAt: transaction.updated_at,
       categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
       category: transaction.categories
         ? {

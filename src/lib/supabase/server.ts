@@ -21,6 +21,7 @@ export type Database = {
 					id: string;
 					month: string;
 					user_id: string;
+					updated_at: string;
 				};
 				Insert: {
 					amount_cents: number;
@@ -29,6 +30,7 @@ export type Database = {
 					id?: string;
 					month: string;
 					user_id: string;
+					updated_at?: string;
 				};
 				Update: {
 					amount_cents?: number;
@@ -37,6 +39,7 @@ export type Database = {
 					id?: string;
 					month?: string;
 					user_id?: string;
+					updated_at?: string;
 				};
 				Relationships: [
 					{
@@ -63,6 +66,7 @@ export type Database = {
 					name: string;
 					type: "income" | "expense";
 					user_id: string;
+					updated_at: string;
 				};
 				Insert: {
 					color?: string | null;
@@ -72,6 +76,7 @@ export type Database = {
 					name: string;
 					type: "income" | "expense";
 					user_id: string;
+					updated_at?: string;
 				};
 				Update: {
 					color?: string | null;
@@ -81,6 +86,7 @@ export type Database = {
 					name?: string;
 					type?: "income" | "expense";
 					user_id?: string;
+					updated_at?: string;
 				};
 				Relationships: [
 					{
@@ -104,6 +110,7 @@ export type Database = {
 					payment_method: "cash" | "card" | "transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
+					updated_at: string;
 				};
 				Insert: {
 					amount: number;
@@ -116,6 +123,7 @@ export type Database = {
 					payment_method: "cash" | "card" | "transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
+					updated_at?: string;
 				};
 				Update: {
 					amount?: number;
@@ -128,6 +136,7 @@ export type Database = {
 					payment_method?: "cash" | "card" | "transfer" | "other";
 					type?: "income" | "expense";
 					user_id?: string;
+					updated_at?: string;
 				};
 				Relationships: [
 					{

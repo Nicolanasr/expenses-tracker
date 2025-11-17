@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
-
 import { CreateCategoryForm } from '@/app/_components/create-category-form';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { CategoryRow } from '@/app/categories/_components/category-row';
+import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +12,7 @@ type Category = {
   type: 'income' | 'expense';
   icon: string | null;
   color: string | null;
+  updated_at: string;
   created_at: string;
 };
 
@@ -20,14 +20,15 @@ export default async function CategoriesPage() {
   const supabase = await createSupabaseServerComponentClient();
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/auth/sign-in');
+  if (userError || !user) {
+    return <OfflineFallback />;
   }
   const { data } = await supabase
     .from('categories')
-    .select('id, name, type, icon, color, created_at')
+    .select('id, name, type, icon, color, created_at, updated_at')
     .order('created_at', { ascending: false });
 
   const categories: Category[] = data ?? [];
