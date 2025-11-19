@@ -7,6 +7,7 @@ import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { fetchTransactionsPage } from '@/lib/transactions/pagination';
 import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
 import { TransactionsExportButton } from '@/app/transactions/_components/transactions-export-button';
+import { OfflineFallback } from '../_components/offline-fallback';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,9 +77,14 @@ export default async function TransactionsPage({
         userError = error as Error;
     }
 
-    if (!userId && !userError) {
+    if (userError?.name == "AuthRetryableFetchError") {
+        return <OfflineFallback />;
+    }
+
+    if (!userId) {
         redirect('/auth/sign-in');
     }
+
 
     const isOffline = !userId;
 
@@ -135,20 +141,20 @@ export default async function TransactionsPage({
     const categories: Category[] = [];
     let paginated:
         | {
-              rows: Array<{
-                  id: string;
-                  amount: number;
-                  type: 'income' | 'expense';
-                  currency_code: string;
-                  occurred_on: string;
-                  payment_method: 'cash' | 'card' | 'transfer' | 'other';
-                  notes: string | null;
-                  category_id: string | null;
-                  categories: Category | null;
-                  updated_at: string;
-              }>;
-              total: number;
-          }
+            rows: Array<{
+                id: string;
+                amount: number;
+                type: 'income' | 'expense';
+                currency_code: string;
+                occurred_on: string;
+                payment_method: 'cash' | 'card' | 'transfer' | 'other';
+                notes: string | null;
+                category_id: string | null;
+                categories: Category | null;
+                updated_at: string;
+            }>;
+            total: number;
+        }
         | null = null;
 
     if (!isOffline) {

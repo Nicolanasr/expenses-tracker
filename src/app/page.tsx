@@ -288,9 +288,11 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         error: userError,
     } = await supabase.auth.getUser();
 
-    console.log(userError)
+    if (userError?.name == "AuthRetryableFetchError") {
+        return <OfflineFallback />;
+    }
 
-    if (!user && !userError) {
+    if (!user) {
         redirect('/auth/sign-in');
     }
 

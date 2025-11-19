@@ -14,7 +14,12 @@ export default async function AccountPage() {
         error: userError,
     } = await supabase.auth.getUser();
 
-    if (!user && !userError) {
+
+    if (userError?.name == "AuthRetryableFetchError") {
+        return <OfflineFallback />;
+    }
+
+    if (!user) {
         redirect('/auth/sign-in');
     }
 
