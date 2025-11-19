@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { AccountSettingsForm } from '@/app/account/_components/account-settings-form';
@@ -12,7 +14,11 @@ export default async function AccountPage() {
         error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (!user && !userError) {
+        redirect('/auth/sign-in');
+    }
+
+    if (userError) {
         return <OfflineFallback />;
     }
 

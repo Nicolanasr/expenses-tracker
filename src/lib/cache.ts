@@ -50,6 +50,7 @@ interface OfflineDB extends DBSchema {
   outbox: {
     key: string;
     value: QueueEntry;
+    indexes: { status: string };
   };
 }
 
@@ -67,7 +68,7 @@ async function getDB() {
       }
       if (!db.objectStoreNames.contains('outbox')) {
         const store = db.createObjectStore('outbox', { keyPath: 'id' });
-        (store as any).createIndex('status', 'status');
+        store.createIndex('status', 'status');
       }
     },
   });
@@ -181,12 +182,8 @@ export async function consumeOutbox() {
   const db = await getDB();
   const tx = db.transaction('outbox', 'readonly');
   const store = tx.objectStore('outbox');
-  const index = (store as any).index ? (store as any).index('status') : null;
-  if (index) {
-    return index.getAll('pending');
-  }
-  const all = await store.getAll();
-  return all.filter((entry) => entry.status === 'pending');
+  const index = store.index('status');
+  return index.getAll('pending');
 }
 
 export async function clearOutboxEntry(id: string) {

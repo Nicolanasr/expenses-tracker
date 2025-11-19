@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 import { CreateCategoryForm } from '@/app/_components/create-category-form';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { CategoryRow } from '@/app/categories/_components/category-row';
@@ -23,7 +25,11 @@ export default async function CategoriesPage() {
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  if (!user && !userError) {
+    redirect('/auth/sign-in');
+  }
+
+  if (userError) {
     return <OfflineFallback />;
   }
   const { data } = await supabase

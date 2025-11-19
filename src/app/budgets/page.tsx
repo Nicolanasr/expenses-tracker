@@ -7,6 +7,7 @@ import { MonthSelector } from "@/app/budgets/_components/month-selector";
 import { CopyBudgetsButton } from "@/app/budgets/_components/copy-budgets-button";
 import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
 import { currentCycleKeyForDate, getCycleRange } from "@/lib/pay-cycle";
+import { OfflineFallback } from "@/app/_components/offline-fallback";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -18,10 +19,15 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 	const supabase = await createSupabaseServerComponentClient();
 	const {
 		data: { user },
+		error: userError,
 	} = await supabase.auth.getUser();
 
-	if (!user) {
+	if (!user && !userError) {
 		redirect("/auth/sign-in");
+	}
+
+	if (userError || !user) {
+		return <OfflineFallback />;
 	}
 
 	const { data: settingsData } = await supabase

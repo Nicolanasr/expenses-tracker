@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
@@ -286,7 +288,13 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    console.log(userError)
+
+    if (!user && !userError) {
+        redirect('/auth/sign-in');
+    }
+
+    if (userError) {
         return <OfflineFallback />;
     }
 
@@ -295,7 +303,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
         .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .maybeSingle();
 
     if (settingsError && settingsError.code !== 'PGRST116') {
@@ -308,7 +316,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         const { data: insertedSettings } = await supabase
             .from('user_settings')
             .upsert(
-                { user_id: user.id, currency_code: currencyCode, pay_cycle_start_day: payCycleStartDay },
+                { user_id: user!.id, currency_code: currencyCode, pay_cycle_start_day: payCycleStartDay },
                 { onConflict: 'user_id' },
             )
             .select('currency_code, pay_cycle_start_day')
@@ -342,7 +350,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const { data: categoryRows, error: categoriesError } = await supabase
         .from('categories')
         .select('id, name, type, icon, color')
-        .eq('user_id', user.id)
+        .eq('user_id', user!.id)
         .order('name', { ascending: true });
 
     if (categoriesError) {
@@ -372,7 +380,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         categories (id, name, type, icon, color)
       `,
             )
-            .eq('user_id', user.id)
+            .eq('user_id', user!.id)
             .gte('occurred_on', rangeStart)
             .lte('occurred_on', rangeEnd);
 

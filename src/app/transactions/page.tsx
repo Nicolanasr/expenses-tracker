@@ -1,3 +1,5 @@
+import { redirect } from 'next/navigation';
+
 import { CreateTransactionForm } from '@/app/_components/create-transaction-form';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
@@ -61,13 +63,21 @@ export default async function TransactionsPage({
 }) {
     const supabase = await createSupabaseServerComponentClient();
     let userId: string | null = null;
+    let userError: Error | null = null;
     try {
         const {
             data: { user },
+            error,
         } = await supabase.auth.getUser();
         userId = user?.id ?? null;
-    } catch {
+        userError = (error as Error) ?? null;
+    } catch (error) {
         userId = null;
+        userError = error as Error;
+    }
+
+    if (!userId && !userError) {
+        redirect('/auth/sign-in');
     }
 
     const isOffline = !userId;
