@@ -13,6 +13,52 @@ export type Json =
 export type Database = {
 	public: {
 		Tables: {
+			accounts: {
+				Row: {
+					id: string;
+					user_id: string;
+					name: string;
+					type: "cash" | "checking" | "savings" | "credit" | "investment" | "other";
+					institution: string | null;
+					color: string | null;
+					starting_balance: number;
+					default_payment_method: "cash" | "card" | "transfer" | "other" | null;
+					created_at: string;
+					updated_at: string;
+				};
+				Insert: {
+					id?: string;
+					user_id: string;
+					name: string;
+					type?: "cash" | "checking" | "savings" | "credit" | "investment" | "other";
+					institution?: string | null;
+					color?: string | null;
+					starting_balance?: number;
+					default_payment_method?: "cash" | "card" | "transfer" | "other" | null;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Update: {
+					id?: string;
+					user_id?: string;
+					name?: string;
+					type?: "cash" | "checking" | "savings" | "credit" | "investment" | "other";
+					institution?: string | null;
+					color?: string | null;
+					starting_balance?: number;
+					default_payment_method?: "cash" | "card" | "transfer" | "other" | null;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "accounts_user_id_fkey";
+						columns: ["user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+				];
+			};
 			budgets: {
 				Row: {
 					amount_cents: number;
@@ -101,10 +147,12 @@ export type Database = {
 			transactions: {
 				Row: {
 					amount: number;
+					account_id: string | null;
 					category_id: string | null;
 					created_at: string;
 					currency_code: string;
 					id: string;
+					payee: string | null;
 					notes: string | null;
 					occurred_on: string;
 					payment_method: "cash" | "card" | "transfer" | "other";
@@ -114,10 +162,12 @@ export type Database = {
 				};
 				Insert: {
 					amount: number;
+					account_id?: string | null;
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
 					id?: string;
+					payee?: string | null;
 					notes?: string | null;
 					occurred_on: string;
 					payment_method: "cash" | "card" | "transfer" | "other";
@@ -127,10 +177,12 @@ export type Database = {
 				};
 				Update: {
 					amount?: number;
+					account_id?: string | null;
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
 					id?: string;
+					payee?: string | null;
 					notes?: string | null;
 					occurred_on?: string;
 					payment_method?: "cash" | "card" | "transfer" | "other";
@@ -143,6 +195,12 @@ export type Database = {
 						foreignKeyName: "transactions_category_id_fkey";
 						columns: ["category_id"];
 						referencedRelation: "categories";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "transactions_account_id_fkey";
+						columns: ["account_id"];
+						referencedRelation: "accounts";
 						referencedColumns: ["id"];
 					},
 					{

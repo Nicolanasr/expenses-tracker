@@ -5,6 +5,7 @@ import BudgetTable from "@/app/budgets/table";
 import { getBudgetSummary, getCategorySpendMap } from "@/lib/budgets";
 import { MonthSelector } from "@/app/budgets/_components/month-selector";
 import { CopyBudgetsButton } from "@/app/budgets/_components/copy-budgets-button";
+import { DeleteMonthBudgetsButton } from "@/app/budgets/_components/delete-month-budgets-button";
 import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
 import { currentCycleKeyForDate, getCycleRange } from "@/lib/pay-cycle";
 import { OfflineFallback } from "@/app/_components/offline-fallback";
@@ -90,7 +91,10 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 
                     <div className="flex flex-col gap-4">
                         <MonthSelector month={month} />
-                        <CopyBudgetsButton month={month} months={copyFromOptions} currencyCode={currencyCode} />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <CopyBudgetsButton month={month} months={copyFromOptions} currencyCode={currencyCode} />
+                            <DeleteMonthBudgetsButton month={month} />
+                        </div>
                     </div>
                 </section>
 

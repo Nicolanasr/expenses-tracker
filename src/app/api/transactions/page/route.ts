@@ -50,6 +50,7 @@ const sanitizeFilters = (filters?: TransactionQueryFilters): TransactionQueryFil
     minAmount: typeof filters.minAmount === 'number' ? filters.minAmount : undefined,
     maxAmount: typeof filters.maxAmount === 'number' ? filters.maxAmount : undefined,
     sort: filters.sort,
+    accountId: typeof filters.accountId === 'string' && filters.accountId.trim().length ? filters.accountId : undefined,
   };
 };
 
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
       occurredOn: transaction.occurred_on,
       paymentMethod: transaction.payment_method,
       notes: transaction.notes,
+      payee: transaction.payee,
       updatedAt: transaction.updated_at,
       categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
       category: transaction.categories
@@ -100,6 +102,15 @@ export async function POST(request: Request) {
             icon: transaction.categories.icon,
             color: transaction.categories.color,
             type: transaction.categories.type,
+          }
+        : null,
+      accountId: transaction.account_id ?? null,
+      account: transaction.accounts
+        ? {
+            id: transaction.accounts.id,
+            name: transaction.accounts.name,
+            type: transaction.accounts.type,
+            institution: transaction.accounts.institution,
           }
         : null,
     }));

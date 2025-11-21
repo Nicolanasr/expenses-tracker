@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { CURRENCY_LOCK_MESSAGE, settingsSchema, type SettingsFormState } from "@/app/account/_lib/settings-form";
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
@@ -74,4 +75,167 @@ export async function updateUserSettings(_prevState: SettingsFormState, formData
 	revalidatePath("/transactions");
 	revalidatePath("/budgets");
 	return { ok: true, message: "Settings saved." };
+}
+
+const accountSchema = z.object({
+	name: z
+		.string({ error: "Account name is required" })
+		.min(2, "Name is too short")
+		.max(48, "Keep the name under 48 characters"),
+	type: z.enum(["cash", "checking", "savings", "credit", "investment", "other"]),
+	institution: z
+		.string()
+		.max(80, "Institution name is too long")
+		.optional()
+		.or(z.literal(""))
+		.transform((val) => (val ? val : null)),
+	starting_balance: z
+		.string()
+		.optional()
+		.transform((val) => {
+			if (!val) return 0;
+			const parsed = Number(val);
+			return Number.isNaN(parsed) ? 0 : parsed;
+		}),
+	default_payment_method: z
+		.enum(["cash", "card", "transfer", "other"])
+		.optional()
+		.or(z.literal(""))
+		.transform((val) => (val ? val : null)),
+});
+
+export type AccountFormState = {
+	ok: boolean;
+	errors?: Record<string, string[] | undefined>;
+	message?: string;
+};
+
+export async function createAccountAction(_prev: AccountFormState, formData: FormData): Promise<AccountFormState> {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
+
+	if (userError || !user) {
+		return { ok: false, message: "You must be signed in." };
+	}
+
+	const payload = accountSchema.safeParse({
+		name: formData.get("name"),
+		type: (formData.get("type") ?? "cash").toString() as "cash",
+		institution: formData.get("institution"),
+		starting_balance: formData.get("starting_balance"),
+		default_payment_method: formData.get("default_payment_method"),
+	});
+
+	if (!payload.success) {
+		return {
+			ok: false,
+			errors: payload.error.flatten().fieldErrors,
+		};
+	}
+
+	const { error } = await supabase.from("accounts").insert({
+		name: payload.data.name.trim(),
+		type: payload.data.type,
+		institution: payload.data.institution,
+		starting_balance: payload.data.starting_balance,
+		default_payment_method: payload.data.default_payment_method,
+		user_id: user.id,
+	});
+
+	if (error) {
+		const message = error.code === "23505" ? "Account name already exists." : "Unable to save account.";
+		return {
+			ok: false,
+			message,
+			errors: { name: [message] },
+		};
+	}
+
+	revalidatePath("/account");
+	revalidatePath("/");
+	return { ok: true, message: "Account added." };
+}
+
+export async function deleteAccountAction(_prev: AccountFormState, formData: FormData): Promise<AccountFormState> {
+	const accountId = formData.get("account_id")?.toString();
+	if (!accountId) {
+		return { ok: false, message: "Missing account id." };
+	}
+
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
+
+	if (userError || !user) {
+		return { ok: false, message: "You must be signed in." };
+	}
+
+	const { error } = await supabase.from("accounts").delete().eq("id", accountId).eq("user_id", user.id);
+	if (error) {
+		return { ok: false, message: "Unable to delete account. Remove linked transactions first." };
+	}
+
+	revalidatePath("/account");
+	revalidatePath("/");
+	revalidatePath("/transactions");
+	return { ok: true, message: "Account deleted." };
+}
+
+export async function updateAccountAction(_prev: AccountFormState, formData: FormData): Promise<AccountFormState> {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
+
+	if (userError || !user) {
+		return { ok: false, message: "You must be signed in." };
+	}
+
+	const accountId = formData.get("account_id")?.toString();
+	if (!accountId) {
+		return { ok: false, message: "Missing account id." };
+	}
+
+	const payload = accountSchema.safeParse({
+		name: formData.get("name"),
+		type: (formData.get("type") ?? "cash").toString(),
+		institution: formData.get("institution"),
+		starting_balance: formData.get("starting_balance"),
+		default_payment_method: formData.get("default_payment_method"),
+	});
+
+	if (!payload.success) {
+		return {
+			ok: false,
+			errors: payload.error.flatten().fieldErrors,
+		};
+	}
+
+	const { error } = await supabase
+		.from("accounts")
+		.update({
+			name: payload.data.name.trim(),
+			type: payload.data.type,
+			institution: payload.data.institution,
+			starting_balance: payload.data.starting_balance,
+			default_payment_method: payload.data.default_payment_method,
+		})
+		.eq("id", accountId)
+		.eq("user_id", user.id);
+
+	if (error) {
+		const message = error.code === "23505" ? "Account name already exists." : "Unable to update account.";
+		return { ok: false, message, errors: { name: [message] } };
+	}
+
+	revalidatePath("/account");
+	revalidatePath("/");
+	revalidatePath("/transactions");
+	return { ok: true, message: "Account updated." };
 }

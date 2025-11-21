@@ -15,6 +15,7 @@ export type Transaction = {
   occurredOn: string;
   paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
   notes: string | null;
+  payee: string | null;
   updatedAt: string;
   categoryId: string | null;
   category: {
@@ -24,6 +25,14 @@ export type Transaction = {
     color: string | null;
     type: 'income' | 'expense';
   } | null;
+  accountId: string | null;
+  account: {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+  } | null;
 };
 
 export type CategoryOption = {
@@ -32,6 +41,14 @@ export type CategoryOption = {
   icon: string | null;
   color: string | null;
   type: 'income' | 'expense';
+};
+
+export type AccountOption = {
+  id: string;
+  name: string;
+  type: string;
+  institution: string | null;
+  defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
 };
 
 export type TransactionFilters = {
@@ -44,6 +61,7 @@ export type TransactionFilters = {
   sort?: string;
   minAmount?: number;
   maxAmount?: number;
+  accountId?: string;
 };
 
 type Props = {
@@ -53,6 +71,8 @@ type Props = {
   page: number;
   filters: TransactionFilters;
   categories: CategoryOption[];
+  accounts: AccountOption[];
+  payees?: string[];
   allowEditing?: boolean;
   preferCacheOnMount?: boolean;
   renderFilters?: React.ReactNode;
@@ -67,16 +87,16 @@ export function TransactionsPaginatedList({
   page,
   filters,
   categories,
+  accounts,
+  payees = [],
   allowEditing = false,
   preferCacheOnMount = false,
   renderFilters,
   title = 'Filtered transactions',
   emptyMessage = 'Nothing here yet. Adjust filters or add a transaction above.',
 }: Props) {
-  const categoryMap = useMemo(
-    () => new Map(categories.map((c) => [c.id, c])),
-    [categories],
-  );
+  const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
+  const accountMap = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
 
   const normalizeRows = useMemo(
     () =>
@@ -88,8 +108,13 @@ export function TransactionsPaginatedList({
             tx.categoryId && !tx.category
               ? (categoryMap.get(tx.categoryId) as Transaction['category']) ?? null
               : (tx.category as Transaction['category']) ?? null,
+          account:
+            tx.accountId && !tx.account
+              ? (accountMap.get(tx.accountId) as Transaction['account']) ?? null
+              : (tx.account as Transaction['account']) ?? null,
+          payee: tx.payee ?? null,
         })) as Transaction[],
-    [categoryMap],
+    [categoryMap, accountMap],
   );
 
   const [rows, setRows] = useState<Transaction[]>(normalizeRows(initialTransactions));
@@ -133,6 +158,7 @@ export function TransactionsPaginatedList({
           case 'transaction:create': {
             const id = (payload.id as string) || `temp-${Date.now()}`;
             const categoryId = (payload.category_id as string | null | undefined) ?? null;
+            const accountId = (payload.account_id as string | null | undefined) ?? null;
             const newRow: Transaction = {
               id,
               amount: Number(payload.amount ?? 0),
@@ -141,10 +167,16 @@ export function TransactionsPaginatedList({
               occurredOn: (payload.occurred_on as string) ?? new Date().toISOString().slice(0, 10),
               paymentMethod: (payload.payment_method as Transaction['paymentMethod']) ?? 'card',
               notes: (payload.notes as string) ?? null,
+              payee: (payload.payee as string | null | undefined) ?? null,
               categoryId,
               category:
                 categoryId && categoryMap.has(categoryId)
                   ? (categoryMap.get(categoryId) as Transaction['category'])
+                  : null,
+              accountId,
+              account:
+                accountId && accountMap.has(accountId)
+                  ? (accountMap.get(accountId) as Transaction['account'])
                   : null,
               updatedAt: new Date().toISOString(),
             };
@@ -167,6 +199,15 @@ export function TransactionsPaginatedList({
                       payload.category_id && categoryMap.has(payload.category_id as string)
                         ? (categoryMap.get(payload.category_id as string) as Transaction['category'])
                         : row.category,
+                    accountId: (payload.account_id as string | null | undefined) ?? row.accountId,
+                    account:
+                      payload.account_id && accountMap.has(payload.account_id as string)
+                        ? (accountMap.get(payload.account_id as string) as Transaction['account'])
+                        : row.account,
+                    payee:
+                      payload.payee !== undefined
+                        ? ((payload.payee as string | null | undefined) ?? null)
+                        : row.payee,
                     updatedAt: new Date().toISOString(),
                   }
                 : row,
@@ -191,7 +232,7 @@ export function TransactionsPaginatedList({
         window.removeEventListener('outbox:queued', handler);
       }
     };
-  }, [categoryMap, normalizeRows]);
+  }, [categoryMap, accountMap, normalizeRows]);
 
   const totalPages = Math.max(1, Math.ceil(total / currentPageSize));
   const groups = useMemo(() => groupByDate(rows), [rows]);
@@ -274,7 +315,14 @@ export function TransactionsPaginatedList({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</h3>
               <div className="space-y-3">
                 {group.items.map((transaction) => (
-                  <TransactionItem key={transaction.id} transaction={transaction} categories={categories} enableEditing={allowEditing} />
+                  <TransactionItem
+                    key={transaction.id}
+                    transaction={transaction}
+                    categories={categories}
+                    accounts={accounts}
+                    payees={payees}
+                    enableEditing={allowEditing}
+                  />
                 ))}
               </div>
             </div>

@@ -13,6 +13,20 @@ create table if not exists public.categories (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.accounts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  type text not null default 'cash' check (type in ('cash', 'checking', 'savings', 'credit', 'investment', 'other')),
+  institution text,
+  color text,
+  starting_balance numeric(12, 2) not null default 0,
+  default_payment_method text check (default_payment_method in ('cash','card','transfer','other')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, name)
+);
+
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
   currency_code text not null default 'USD',
@@ -27,6 +41,7 @@ create table if not exists public.user_settings (
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   category_id uuid references public.categories (id) on delete set null,
+  account_id uuid references public.accounts (id) on delete set null,
   amount numeric(12, 2) not null check (amount > 0),
   type text not null check (type in ('income', 'expense')),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -35,6 +50,7 @@ create table if not exists public.transactions (
   payment_method text not null check (
     payment_method in ('cash', 'card', 'transfer', 'other')
   ),
+  payee text,
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -59,8 +75,12 @@ create index if not exists transactions_category_id_idx
   on public.transactions (category_id);
 create index if not exists transactions_user_id_idx
   on public.transactions (user_id);
+create index if not exists transactions_account_id_idx
+  on public.transactions (account_id);
 create index if not exists categories_user_id_idx
   on public.categories (user_id);
+create index if not exists accounts_user_id_idx
+  on public.accounts (user_id);
 create unique index if not exists categories_user_id_name_key
   on public.categories (user_id, name);
 create index if not exists user_settings_currency_code_idx
@@ -125,6 +145,25 @@ create policy if not exists "Users can manage their settings"
   on public.user_settings
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+alter table public.accounts enable row level security;
+
+create policy if not exists "Users can view their accounts"
+  on public.accounts for select
+  using (auth.uid() = user_id);
+
+create policy if not exists "Users can insert their accounts"
+  on public.accounts for insert
+  with check (auth.uid() = user_id);
+
+create policy if not exists "Users can update their accounts"
+  on public.accounts for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy if not exists "Users can delete their accounts"
+  on public.accounts for delete
+  using (auth.uid() = user_id);
 
 do $$
 begin
@@ -217,22 +256,18 @@ language plpgsql
 security definer
 as $$
 declare
-  inserted integer;
+  affected integer;
 begin
-  insert into public.budgets (user_id, category_id, month, amount_cents)
-  select auth.uid(), b.category_id, p_to_month, b.amount_cents
+  insert into public.budgets (user_id, category_id, month, amount_cents, updated_at)
+  select auth.uid(), b.category_id, p_to_month, b.amount_cents, now()
   from public.budgets b
   where b.user_id = auth.uid()
     and b.month = p_from_month
-    and not exists (
-      select 1
-      from public.budgets existing
-      where existing.user_id = auth.uid()
-        and existing.category_id = b.category_id
-        and existing.month = p_to_month
-    );
+  on conflict (user_id, category_id, month) do update
+    set amount_cents = excluded.amount_cents,
+        updated_at = now();
 
-  get diagnostics inserted = row_count;
-  return inserted;
+  get diagnostics affected = row_count;
+  return affected;
 end;
 $$;

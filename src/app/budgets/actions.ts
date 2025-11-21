@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { copyBudgets, toCents, upsertBudget } from "@/lib/budgets";
+import { createSupabaseServerActionClient } from "@/lib/supabase/server";
 
 const upsertSchema = z.object({
 	categoryId: z.string().uuid(),
@@ -43,6 +44,15 @@ const bulkSaveSchema = z.object({
 	),
 });
 
+const deleteSchema = z.object({
+	month: z.string().regex(/^\d{4}-\d{2}$/),
+	categoryId: z.string().uuid(),
+});
+
+const deleteMonthSchema = z.object({
+	month: z.string().regex(/^\d{4}-\d{2}$/),
+});
+
 export async function saveBudgetsAction(form: FormData) {
 	const raw = form.get("payload");
 	if (typeof raw !== "string") {
@@ -65,4 +75,72 @@ export async function saveBudgetsAction(form: FormData) {
 	);
 
 	revalidatePath("/budgets");
+}
+
+export async function deleteBudgetAction(formData: FormData) {
+	const parsed = deleteSchema.safeParse({
+		month: formData.get("month"),
+		categoryId: formData.get("categoryId"),
+	});
+
+	if (!parsed.success) {
+		throw new Error("Invalid budget delete payload");
+	}
+
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
+
+	if (error || !user) {
+		throw error ?? new Error("You must be signed in.");
+	}
+
+	const { error: deleteError } = await supabase
+		.from("budgets")
+		.delete()
+		.eq("user_id", user.id)
+		.eq("category_id", parsed.data.categoryId)
+		.eq("month", parsed.data.month);
+
+	if (deleteError) {
+		throw deleteError;
+	}
+
+	revalidatePath("/budgets");
+	return { ok: true };
+}
+
+export async function deleteMonthBudgetsAction(formData: FormData) {
+	const parsed = deleteMonthSchema.safeParse({
+		month: formData.get("month"),
+	});
+
+	if (!parsed.success) {
+		throw new Error("Invalid month");
+	}
+
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
+
+	if (error || !user) {
+		throw error ?? new Error("You must be signed in.");
+	}
+
+	const { error: deleteError } = await supabase
+		.from("budgets")
+		.delete()
+		.eq("user_id", user.id)
+		.eq("month", parsed.data.month);
+
+	if (deleteError) {
+		throw deleteError;
+	}
+
+	revalidatePath("/budgets");
+	return { ok: true };
 }

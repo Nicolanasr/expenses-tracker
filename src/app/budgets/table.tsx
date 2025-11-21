@@ -7,7 +7,7 @@ import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
 import { queueBudgetMutation } from "@/lib/outbox-sync";
 
-import { saveBudgetsAction } from "./actions";
+import { deleteBudgetAction, saveBudgetsAction } from "./actions";
 
 type Category = {
     id: string;
@@ -52,6 +52,7 @@ export default function BudgetTable({
         return initial;
     });
     const [banner, setBanner] = useState<string | null>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
 
     useEffect(() => {
         const reset: Record<string, string> = {};
@@ -70,6 +71,37 @@ export default function BudgetTable({
         style: "currency",
         currency: currencyCode,
     });
+
+    const handleDelete = (categoryId: string) => {
+        if (!categoryId) return;
+        const confirmed = confirm("Remove this budget? This only deletes the amount for this month.");
+        if (!confirmed) return;
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+            toast.error("Go online to delete budgets.");
+            return;
+        }
+        const form = new FormData();
+        form.append("categoryId", categoryId);
+        form.append("month", month);
+        setDeletingId(categoryId);
+        startTransition(async () => {
+            try {
+                await deleteBudgetAction(form);
+                setDrafts((prev) => {
+                    const next = { ...prev };
+                    delete next[categoryId];
+                    return next;
+                });
+                setBanner("Budget deleted.");
+                toast.success("Budget deleted");
+            } catch (error) {
+                console.error(error);
+                toast.error("Unable to delete budget");
+            } finally {
+                setDeletingId(null);
+            }
+        });
+    };
 
     return (
         <>
@@ -147,6 +179,7 @@ export default function BudgetTable({
                                     <th className="px-3 py-2 text-right">Spent</th>
                                     <th className="px-3 py-2 text-right">Remaining</th>
                                     <th className="px-3 py-2 text-left">% Used</th>
+                                    <th className="px-3 py-2 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -160,10 +193,10 @@ export default function BudgetTable({
                                         row?.used_pct ??
                                         (budgetCents === 0 ? 0 : Number(((spentCents / budgetCents) * 100).toFixed(1)));
 
-                                    // eslint-disable-next-line react-hooks/immutability
                                     totalBudgetCents += budgetCents;
                                     totalSpentCents += spentCents;
 
+                                    const canDelete = Boolean(row);
                                     return (
                                         <tr key={category.id} className="border-t border-slate-100">
                                             <td className="px-3 py-3 font-medium text-slate-900">{category.name}</td>
@@ -192,6 +225,20 @@ export default function BudgetTable({
                                                     <span className="text-xs font-semibold text-slate-600">{usedPct.toFixed(1)}%</span>
                                                     <BudgetBar pct={usedPct} />
                                                 </div>
+                                            </td>
+                                            <td className="px-3 py-3 text-right">
+                                                {canDelete ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDelete(category.id)}
+                                                        disabled={isPending || deletingId === category.id}
+                                                        className="text-xs font-semibold text-rose-600 transition hover:text-rose-500 disabled:opacity-50"
+                                                    >
+                                                        {deletingId === category.id ? 'Removing…' : 'Delete'}
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-xs text-slate-400">—</span>
+                                                )}
                                             </td>
                                         </tr>
                                     );

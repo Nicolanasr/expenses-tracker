@@ -9,8 +9,16 @@ const TRANSACTION_SELECT = `
   occurred_on,
   payment_method,
   notes,
+  payee,
   updated_at,
   category_id,
+  account_id,
+  accounts (
+    id,
+    name,
+    type,
+    institution
+  ),
   categories (
     id,
     name,
@@ -42,9 +50,10 @@ export type TransactionQueryFilters = {
   minAmount?: number;
   maxAmount?: number;
   sort?: TransactionSortKey;
+  accountId?: string;
 };
 
-export type TransactionJoinedRow = TransactionRow & { categories: CategoryRow | null };
+export type TransactionJoinedRow = TransactionRow & { categories: CategoryRow | null; accounts: { id: string; name: string; type: string; institution: string | null } | null };
 
 export async function fetchTransactionsPage(
   supabase: SupabaseClient<Database>,
@@ -70,6 +79,9 @@ export async function fetchTransactionsPage(
   }
   if (filters.paymentMethod) {
     query = query.eq('payment_method', filters.paymentMethod);
+  }
+  if (filters.accountId) {
+    query = query.eq('account_id', filters.accountId);
   }
   if (filters.type === 'income' || filters.type === 'expense') {
     query = query.eq('type', filters.type);

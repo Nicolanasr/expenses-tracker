@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
+import CreatableSelect from 'react-select/creatable';
 
 import { createTransaction } from '@/app/actions';
 import { queueTransactionMutation } from '@/lib/outbox-sync';
@@ -13,6 +14,14 @@ type Category = {
     type: 'income' | 'expense';
     icon: string | null;
     color: string | null;
+};
+
+type Account = {
+    id: string;
+    name: string;
+    type: string;
+    institution?: string | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
 };
 
 type FormState = {
@@ -51,9 +60,11 @@ function getCategoryIcon(category: Category) {
 
 type Props = {
     categories: Category[];
+    accounts: Account[];
+    payees?: string[];
 };
 
-export function CreateTransactionForm({ categories }: Props) {
+export function CreateTransactionForm({ categories, accounts, payees = [] }: Props) {
     const formRef = useRef<HTMLFormElement>(null);
     const [state, formAction] = useActionState(
         createTransaction,
@@ -64,6 +75,10 @@ export function CreateTransactionForm({ categories }: Props) {
     const [paymentMethod, setPaymentMethod] = useState<
         keyof typeof PAYMENT_METHOD_LABELS
     >('card');
+    const defaultAccountId = accounts[0]?.id ?? '';
+    const [selectedAccountId, setSelectedAccountId] = useState(defaultAccountId);
+    const [accountManuallySelected, setAccountManuallySelected] = useState(false);
+    const [payeeValue, setPayeeValue] = useState<string>('');
     const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -85,16 +100,21 @@ export function CreateTransactionForm({ categories }: Props) {
                     ? 'expense'
                     : 'income',
             );
+            setSelectedAccountId('');
+            setAccountManuallySelected(false);
+            setPayeeValue('');
             toast.success('Transaction recorded');
         }, 0);
 
         return () => window.clearTimeout(timeout);
-    }, [state, categories]);
+    }, [state, categories, defaultAccountId]);
 
     const defaultDate = useMemo(() => {
         const now = new Date();
         return now.toISOString().slice(0, 10);
     }, []);
+
+
 
     const categoryGroups = useMemo(() => {
         return categories.reduce<Record<'income' | 'expense', Category[]>>(
@@ -105,6 +125,11 @@ export function CreateTransactionForm({ categories }: Props) {
             { income: [], expense: [] },
         );
     }, [categories]);
+
+    const payeeOptions = useMemo(() => {
+        const unique = Array.from(new Set(payees.filter((name): name is string => Boolean(name))));
+        return unique.map((name) => ({ value: name, label: name }));
+    }, [payees]);
 
     const tabOptions = useMemo(
         () => [
@@ -156,6 +181,8 @@ export function CreateTransactionForm({ categories }: Props) {
                 event.currentTarget.reset();
                 setSelectedCategory('');
                 setPaymentMethod('card');
+                setSelectedAccountId('');
+                setAccountManuallySelected(false);
                 return;
             }
             startTransition(() => {
@@ -222,6 +249,16 @@ export function CreateTransactionForm({ categories }: Props) {
 
         return () => window.clearTimeout(timeout);
     }, [activeType, categories, categoryGroups, selectedCategory]);
+
+    const linkedAccountId = useMemo(() => {
+        const match = accounts.find((account) => account.defaultPaymentMethod === paymentMethod);
+        return match?.id ?? '';
+    }, [accounts, paymentMethod]);
+
+    const resolvedAccountId =
+        accountManuallySelected
+            ? selectedAccountId
+            : linkedAccountId || selectedAccountId || defaultAccountId;
 
     return (
         <form
@@ -399,7 +436,10 @@ export function CreateTransactionForm({ categories }: Props) {
                                         value={value}
                                         className="sr-only"
                                         checked={isSelected}
-                                        onChange={() => setPaymentMethod(value)}
+                                        onChange={() => {
+                                            setPaymentMethod(value);
+                                            setAccountManuallySelected(false);
+                                        }}
                                     />
                                     {label}
                                 </label>
@@ -411,6 +451,51 @@ export function CreateTransactionForm({ categories }: Props) {
                     <p className="text-xs text-red-500">
                         {state.errors.payment_method[0]}
                     </p>
+                ) : null}
+            </div>
+
+            <div className="grid gap-2">
+                <label className="text-sm font-semibold text-slate-800">
+                    Payee / merchant
+                </label>
+                <CreatableSelect
+                    instanceId="payee-select"
+                    classNamePrefix="payee-select"
+                    placeholder="Search or create"
+                    value={payeeValue ? { value: payeeValue, label: payeeValue } : null}
+                    onChange={(option) => setPayeeValue(option?.value ?? '')}
+                    onCreateOption={(value) => setPayeeValue(value)}
+                    options={payeeOptions}
+                    isClearable
+                />
+                <input type="hidden" name="payee" value={payeeValue} />
+                {state.errors?.payee?.length ? (
+                    <p className="text-xs text-red-500">{state.errors.payee[0]}</p>
+                ) : null}
+            </div>
+
+            <div className="grid gap-2">
+                <label className="text-sm font-semibold text-slate-800">
+                    Account (optional)
+                </label>
+                <select
+                    name="account_id"
+                    value={resolvedAccountId}
+                    onChange={(event) => {
+                        setSelectedAccountId(event.target.value);
+                        setAccountManuallySelected(true);
+                    }}
+                    className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                >
+                    {/* <option value="">No account</option> */}
+                    {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                            {account.name}
+                        </option>
+                    ))}
+                </select>
+                {state.errors?.account_id?.length ? (
+                    <p className="text-xs text-red-500">{state.errors.account_id[0]}</p>
                 ) : null}
             </div>
 

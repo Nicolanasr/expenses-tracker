@@ -11,6 +11,7 @@ import Image from 'next/image';
 const NAV_ITEMS = [
     { href: '/', label: 'Overview' },
     { href: '/transactions', label: 'Transactions' },
+    { href: '/transfers', label: 'Transfers' },
     { href: '/categories', label: 'Categories' },
     { href: '/budgets', label: 'Budgets' },
 ];

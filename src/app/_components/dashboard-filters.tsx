@@ -15,6 +15,13 @@ type CategoryOption = {
     type: 'income' | 'expense';
 };
 
+type AccountOption = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+};
+
 type SavedFilter = {
     id: string;
     name: string;
@@ -30,6 +37,7 @@ type PresetOption = {
 
 type DashboardFiltersProps = {
     categories: CategoryOption[];
+    accounts: AccountOption[];
     savedFilters: SavedFilter[];
     initialFilters: {
         start?: string;
@@ -37,6 +45,7 @@ type DashboardFiltersProps = {
         categoryNames?: string[];
         paymentMethod?: string;
         search?: string;
+        accountId?: string;
     };
     summaryInterval: 'month' | 'week' | 'day';
 };
@@ -86,6 +95,7 @@ function toInputValue(date: Date) {
 
 export function DashboardFilters({
     categories,
+    accounts,
     savedFilters,
     initialFilters,
     summaryInterval,
@@ -104,6 +114,7 @@ export function DashboardFilters({
     const [paymentMethod, setPaymentMethod] = useState<string>(
         initialFilters.paymentMethod ?? '',
     );
+    const [accountId, setAccountId] = useState(initialFilters.accountId ?? '');
     const [search, setSearch] = useState(initialFilters.search ?? '');
     const [presetError, setPresetError] = useState<string | null>(null);
     const [presetPending, startPresetTransition] = useTransition();
@@ -138,6 +149,7 @@ export function DashboardFilters({
             setEndDate(initialFilters.end ?? '');
             setCategoryNames(initialFilters.categoryNames ?? []);
             setPaymentMethod(initialFilters.paymentMethod ?? '');
+            setAccountId(initialFilters.accountId ?? '');
             setSearch(initialFilters.search ?? '');
         }, 0);
 
@@ -147,6 +159,7 @@ export function DashboardFilters({
         initialFilters.end,
         initialFilters.categoryNames,
         initialFilters.paymentMethod,
+        initialFilters.accountId,
         initialFilters.search,
     ]);
 
@@ -156,14 +169,15 @@ export function DashboardFilters({
         if (endDate) params.set('end', endDate);
         categoryNames.forEach((name) => params.append('category', name));
         if (paymentMethod) params.set('payment', paymentMethod);
+        if (accountId) params.set('account', accountId);
         if (search.trim()) params.set('search', search.trim());
         return params;
-    }, [startDate, endDate, categoryNames, paymentMethod, search]);
+    }, [startDate, endDate, categoryNames, paymentMethod, accountId, search]);
 
     const mergeFilterParams = useCallback(
         (filters: URLSearchParams) => {
             const next = new URLSearchParams(searchParams.toString());
-            ['start', 'end', 'category', 'payment', 'search'].forEach((key) => next.delete(key));
+            ['start', 'end', 'category', 'payment', 'search', 'account'].forEach((key) => next.delete(key));
             filters.forEach((value, key) => {
                 if (key === 'category') {
                     next.append(key, value);
@@ -193,12 +207,14 @@ export function DashboardFilters({
         next.delete('category');
         next.delete('payment');
         next.delete('search');
+        next.delete('account');
 
         const [presetStart, presetEnd] = presets[0].getRange();
         setStartDate(toInputValue(presetStart));
         setEndDate(toInputValue(presetEnd));
         setCategoryNames([]);
         setPaymentMethod('');
+        setAccountId('');
         setSearch('');
 
         const queryString = next.toString();
@@ -498,6 +514,22 @@ export function DashboardFilters({
                                         );
                                     })}
                                 </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                                <p className="text-sm font-semibold text-slate-900">Account</p>
+                                <select
+                                    value={accountId}
+                                    onChange={(event) => setAccountId(event.target.value)}
+                                    className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                                >
+                                    <option value="">All accounts</option>
+                                    {accounts.map((account) => (
+                                        <option key={account.id} value={account.id}>
+                                            {account.name}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             <div className="grid gap-2 sm:col-span-2 lg:col-span-3">

@@ -30,6 +30,43 @@ type Category = {
     color: string | null;
 };
 
+type TransactionRow = {
+    id: string;
+    amount: number;
+    type: 'income' | 'expense';
+    currency_code: string;
+    occurred_on: string;
+    payment_method: 'cash' | 'card' | 'transfer' | 'other';
+    notes: string | null;
+    payee: string | null;
+    category_id: string | null;
+    categories: Category | null;
+    account_id: string | null;
+    accounts: {
+        id: string;
+        name: string;
+        type: string;
+        institution: string | null;
+    } | null;
+    updated_at: string;
+};
+
+type AccountRow = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    default_payment_method: 'cash' | 'card' | 'transfer' | 'other' | null;
+};
+
+type AccountOption = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    defaultPaymentMethod: 'cash' | 'card' | 'transfer' | 'other' | null;
+};
+
 function parseParam(params: Record<string, string | string[] | undefined>, key: string) {
     const raw = params[key];
     if (!raw) return undefined;
@@ -105,6 +142,7 @@ export default async function TransactionsPage({
     const maxAmount = parseParam(resolvedSearchParams, 'maxAmount');
     const sortParam = parseParam(resolvedSearchParams, 'sort') ?? 'recent';
     const pageParam = parseParam(resolvedSearchParams, 'page');
+    const accountFilter = parseParam(resolvedSearchParams, 'account');
 
     const minAmountValue = parseNumberParam(minAmount);
     const maxAmountValue = parseNumberParam(maxAmount);
@@ -139,36 +177,58 @@ export default async function TransactionsPage({
     }
 
     const categories: Category[] = [];
+    const accounts: AccountRow[] = [];
     let paginated:
         | {
-            rows: Array<{
-                id: string;
-                amount: number;
-                type: 'income' | 'expense';
-                currency_code: string;
-                occurred_on: string;
-                payment_method: 'cash' | 'card' | 'transfer' | 'other';
-                notes: string | null;
-                category_id: string | null;
-                categories: Category | null;
-                updated_at: string;
-            }>;
+            rows: TransactionRow[];
             total: number;
         }
         | null = null;
 
     if (!isOffline) {
-        const { data: categoryRows, error: categoriesError } = await supabase
-            .from('categories')
-            .select('id, name, type, icon, color')
-            .eq('user_id', userId!)
-            .order('name', { ascending: true });
+        const [
+            { data: categoryRows, error: categoriesError },
+            { data: accountRows, error: accountsError },
+        ] = await Promise.all([
+            supabase
+                .from('categories')
+                .select('id, name, type, icon, color')
+                .eq('user_id', userId!)
+                .order('name', { ascending: true }),
+            supabase
+                .from('accounts')
+                .select('id, name, type, institution, default_payment_method')
+                .eq('user_id', userId!)
+                .order('name', { ascending: true }),
+        ]);
 
         if (categoriesError) {
             throw categoriesError;
         }
+        if (accountsError) {
+            throw accountsError;
+        }
 
         categories.push(...((categoryRows ?? []) as Category[]));
+
+        const initialAccounts = (accountRows ?? []) as AccountRow[];
+        if (initialAccounts.length === 0) {
+            const { data: insertedAccount, error: insertAccountError } = await supabase
+                .from('accounts')
+                .insert({
+                    user_id: userId!,
+                    name: 'Main account',
+                    type: 'checking',
+                })
+                .select('id, name, type, institution, default_payment_method')
+                .single();
+            if (insertAccountError) {
+                console.error(insertAccountError);
+            } else if (insertedAccount) {
+                initialAccounts.push(insertedAccount as AccountRow);
+            }
+        }
+        accounts.push(...initialAccounts);
     }
 
     const nameToId = new Map(categories.map((category) => [category.name, category.id]));
@@ -182,6 +242,20 @@ export default async function TransactionsPage({
         })
         .filter((value): value is string => Boolean(value));
 
+    const accountOptions: AccountOption[] = accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        type: account.type,
+        institution: account.institution,
+        defaultPaymentMethod: account.default_payment_method ?? null,
+    }));
+    const accountNameToId = new Map(accountOptions.map((account) => [account.name, account.id]));
+    const selectedAccountId = accountFilter
+        ? accountOptions.some((account) => account.id === accountFilter)
+            ? accountFilter
+            : accountNameToId.get(accountFilter) ?? undefined
+        : undefined;
+
     const transactionFiltersForList = {
         start,
         end,
@@ -191,6 +265,7 @@ export default async function TransactionsPage({
         minAmount: minAmountValue,
         maxAmount: maxAmountValue,
         sort: sortKey,
+        accountId: selectedAccountId,
     };
 
     if (!isOffline) {
@@ -209,6 +284,7 @@ export default async function TransactionsPage({
         occurredOn: transaction.occurred_on,
         paymentMethod: transaction.payment_method,
         notes: transaction.notes,
+        payee: transaction.payee ?? null,
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
         updatedAt: transaction.updated_at,
         category: transaction.categories
@@ -220,7 +296,17 @@ export default async function TransactionsPage({
                 type: transaction.categories.type,
             }
             : null,
+        accountId: transaction.account_id ?? transaction.accounts?.id ?? null,
+        account: transaction.accounts
+            ? {
+                id: transaction.accounts.id,
+                name: transaction.accounts.name,
+                type: transaction.accounts.type,
+                institution: transaction.accounts.institution,
+            }
+            : null,
     }));
+    const payees = Array.from(new Set(normalizedTransactions.map((transaction) => transaction.payee).filter((name): name is string => Boolean(name))));
 
     const categoryOptions = (categories ?? []).map((category) => ({
         id: category.id,
@@ -250,6 +336,7 @@ export default async function TransactionsPage({
         minAmount: minAmount ?? '',
         maxAmount: maxAmount ?? '',
         sort: sortParam ?? 'recent',
+        accountId: selectedAccountId ?? '',
     };
 
     return (
@@ -258,7 +345,7 @@ export default async function TransactionsPage({
 
             <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
                 <section>
-                    <CreateTransactionForm categories={categories ?? []} />
+                    <CreateTransactionForm categories={categories ?? []} accounts={accountOptions} payees={payees} />
                 </section>
 
                 {/* <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -279,6 +366,8 @@ export default async function TransactionsPage({
                     page={page}
                     filters={transactionFiltersForList}
                     categories={categoryOptions}
+                    accounts={accountOptions}
+                    payees={payees}
                     allowEditing={!isOffline}
                     preferCacheOnMount={isOffline}
                     title="All transactions"
@@ -291,6 +380,7 @@ export default async function TransactionsPage({
                             <div className="mt-4">
                                 <TransactionsFilters
                                     categories={categories}
+                                    accounts={accountOptions}
                                     initialFilters={sharedInitialFilters}
                                     compact
                                 />

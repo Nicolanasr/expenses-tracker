@@ -1,8 +1,9 @@
 'use client';
 
-import { useActionState, useCallback, useEffect, useMemo, useState, startTransition } from 'react';
+import { useActionState, useCallback, useMemo, useState, startTransition, useEffect } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
+import CreatableSelect from 'react-select/creatable';
 
 import {
     deleteTransactionById,
@@ -32,23 +33,36 @@ type CategoryOption = {
     type: 'income' | 'expense';
 };
 
+type AccountOption = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+};
+
 type TransactionData = {
-  id: string;
-  amount: number;
-  type: 'income' | 'expense';
-  occurredOn: string;
-  paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
-  notes: string | null;
-  categoryId: string | null;
-  category: CategoryOption | null;
-  currencyCode: string;
-  updatedAt: string;
+    id: string;
+    amount: number;
+    type: 'income' | 'expense';
+    occurredOn: string;
+    paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
+    notes: string | null;
+    payee: string | null;
+    categoryId: string | null;
+    category: CategoryOption | null;
+    accountId: string | null;
+    account: AccountOption | null;
+    currencyCode: string;
+    updatedAt: string;
 };
 
 type TransactionItemProps = {
-  transaction: TransactionData;
-  categories: CategoryOption[];
-  enableEditing?: boolean;
+    transaction: TransactionData;
+    categories: CategoryOption[];
+    accounts: AccountOption[];
+    payees: string[];
+    enableEditing?: boolean;
 };
 
 const EDIT_INITIAL_STATE: FormState = { ok: false, errors: {} };
@@ -56,10 +70,14 @@ const EDIT_INITIAL_STATE: FormState = { ok: false, errors: {} };
 function TransactionEditForm({
     transaction,
     categories,
+    accounts,
+    payees,
     onCancel,
 }: {
     transaction: TransactionData;
     categories: CategoryOption[];
+    accounts: AccountOption[];
+    payees: string[];
     onCancel: () => void;
 }) {
     const [state, formAction] = useActionState<FormState, FormData>(
@@ -69,12 +87,24 @@ function TransactionEditForm({
     const [paymentMethod, setPaymentMethod] = useState<
         keyof typeof PAYMENT_METHOD_LABELS
     >(transaction.paymentMethod);
+    const [payeeValue, setPayeeValue] = useState(transaction.payee ?? '');
+    const [selectedAccountId, setSelectedAccountId] = useState(transaction.accountId ?? '');
+    const [accountManuallySelected, setAccountManuallySelected] = useState(Boolean(transaction.accountId));
+    const linkedAccountId = useMemo(() => {
+        const match = accounts.find((account) => account.defaultPaymentMethod === paymentMethod);
+        return match?.id ?? '';
+    }, [accounts, paymentMethod]);
 
     useEffect(() => {
         if (state.ok) {
             onCancel();
         }
     }, [state.ok, onCancel]);
+
+    const fallbackAccountId = accounts[0]?.id ?? '';
+    const resolvedAccountId = accountManuallySelected
+        ? selectedAccountId
+        : linkedAccountId || selectedAccountId || fallbackAccountId;
 
     const groupedCategories = useMemo(() => {
         return categories.reduce<Record<'income' | 'expense', CategoryOption[]>>(
@@ -85,6 +115,14 @@ function TransactionEditForm({
             { income: [], expense: [] },
         );
     }, [categories]);
+
+    const payeeOptions = useMemo(() => {
+        const unique = new Set(payees.filter(Boolean));
+        if (transaction.payee) {
+            unique.add(transaction.payee);
+        }
+        return Array.from(unique).map((name) => ({ value: name, label: name }));
+    }, [payees, transaction.payee]);
 
     const hasExpenses = groupedCategories.expense.length > 0;
     const hasIncome = groupedCategories.income.length > 0;
@@ -99,7 +137,9 @@ function TransactionEditForm({
                 onCancel();
                 return;
             }
-            formAction(formData);
+            startTransition(() => {
+                formAction(formData);
+            });
         },
         [formAction, onCancel],
     );
@@ -201,7 +241,10 @@ function TransactionEditForm({
                                         value={value}
                                         className="sr-only"
                                         checked={isSelected}
-                                        onChange={() => setPaymentMethod(value)}
+                                        onChange={() => {
+                                            setPaymentMethod(value);
+                                            setAccountManuallySelected(false);
+                                        }}
                                     />
                                     {label}
                                 </label>
@@ -213,6 +256,45 @@ function TransactionEditForm({
                     <p className="text-xs text-red-500">
                         {state.errors.payment_method[0]}
                     </p>
+                ) : null}
+            </div>
+
+            <div className="grid gap-2">
+                <label className="text-sm font-semibold text-slate-900">Payee / merchant</label>
+                <CreatableSelect
+                    instanceId={`edit-payee-${transaction.id}`}
+                    classNamePrefix="payee-select"
+                    placeholder="Search or create"
+                    value={payeeValue ? { value: payeeValue, label: payeeValue } : null}
+                    onChange={(option) => setPayeeValue(option?.value ?? '')}
+                    onCreateOption={(value) => setPayeeValue(value)}
+                    options={payeeOptions}
+                    isClearable
+                />
+                <input type="hidden" name="payee" value={payeeValue} />
+                {state.errors?.payee?.length ? <p className="text-xs text-red-500">{state.errors.payee[0]}</p> : null}
+            </div>
+
+            <div className="grid gap-2">
+                <label className="text-sm font-semibold text-slate-900">Account (optional)</label>
+                <select
+                    name="account_id"
+                    value={resolvedAccountId}
+                    onChange={(event) => {
+                        setSelectedAccountId(event.target.value);
+                        setAccountManuallySelected(true);
+                    }}
+                    className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                >
+                    {/* <option value="">No account</option> */}
+                    {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                            {account.name}
+                        </option>
+                    ))}
+                </select>
+                {state.errors?.account_id?.length ? (
+                    <p className="text-xs text-red-500">{state.errors.account_id[0]}</p>
                 ) : null}
             </div>
 
@@ -294,6 +376,8 @@ function DeleteTransactionButton({ transactionId, updatedAt }: { transactionId: 
                                                     occurred_on: deleted.occurred_on,
                                                     payment_method: deleted.payment_method,
                                                     notes: deleted.notes,
+                                                    payee: deleted.payee ?? null,
+                                                    account_id: deleted.account_id ?? null,
                                                     category_id: deleted.category_id,
                                                     type: deleted.type,
                                                     currency_code: deleted.currency_code ?? 'USD',
@@ -325,19 +409,21 @@ function DeleteTransactionButton({ transactionId, updatedAt }: { transactionId: 
 }
 
 export function TransactionItem({
- transaction,
- categories,
- enableEditing = false,
+    transaction,
+    categories,
+    accounts,
+    payees,
+    enableEditing = false,
 }: TransactionItemProps) {
- const [isEditing, setIsEditing] = useState(false);
-  const amountFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: transaction.currencyCode,
-      }),
-    [transaction.currencyCode],
-  );
+    const [isEditing, setIsEditing] = useState(false);
+    const amountFormatter = useMemo(
+        () =>
+            new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: transaction.currencyCode,
+            }),
+        [transaction.currencyCode],
+    );
 
     return (
         <article className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -345,6 +431,8 @@ export function TransactionItem({
                 <TransactionEditForm
                     transaction={transaction}
                     categories={categories}
+                    accounts={accounts}
+                    payees={payees}
                     onCancel={() => setIsEditing(false)}
                 />
             ) : (
@@ -371,6 +459,12 @@ export function TransactionItem({
                                 <p className="text-xs font-medium text-slate-500">
                                     {DATE.format(new Date(transaction.occurredOn))}
                                 </p>
+                                {transaction.account ? (
+                                    <p className="text-xs text-slate-500">Account: {transaction.account.name}</p>
+                                ) : null}
+                                {transaction.payee ? (
+                                    <p className="text-xs text-slate-500">Payee: {transaction.payee}</p>
+                                ) : null}
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -400,9 +494,9 @@ export function TransactionItem({
                                 : 'text-rose-600'
                                 }`}
                         >
-              {transaction.type === 'income' ? '+' : '-'}
-              {amountFormatter.format(Number(transaction.amount))}
-            </span>
+                            {transaction.type === 'income' ? '+' : '-'}
+                            {amountFormatter.format(Number(transaction.amount))}
+                        </span>
                     </div>
                     {transaction.notes ? (
                         <p className="mt-3 text-xs font-medium text-slate-600">

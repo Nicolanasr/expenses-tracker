@@ -14,8 +14,16 @@ type CategoryOption = {
     type: 'income' | 'expense';
 };
 
+type AccountOption = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+};
+
 type TransactionsFiltersProps = {
     categories: CategoryOption[];
+    accounts: AccountOption[];
     initialFilters: {
         start: string;
         end: string;
@@ -25,12 +33,14 @@ type TransactionsFiltersProps = {
         minAmount: string;
         maxAmount: string;
         sort: string;
+        accountId?: string;
     };
     compact?: boolean;
 };
 
 export function TransactionsFilters({
     categories,
+    accounts,
     initialFilters,
     compact = false,
 }: TransactionsFiltersProps) {
@@ -52,6 +62,7 @@ export function TransactionsFilters({
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
         normalizePaymentMethod(initialFilters.paymentMethod),
     );
+    const [accountId, setAccountId] = useState(initialFilters.accountId ?? '');
     const [type, setType] = useState(initialFilters.type ?? '');
     const [minAmount, setMinAmount] = useState(initialFilters.minAmount ?? '');
     const [maxAmount, setMaxAmount] = useState(initialFilters.maxAmount ?? '');
@@ -63,6 +74,7 @@ export function TransactionsFilters({
             setEndDate(initialFilters.end ?? '');
             setCategoryNames(initialFilters.categoryNames ?? []);
             setPaymentMethod(normalizePaymentMethod(initialFilters.paymentMethod));
+            setAccountId(initialFilters.accountId ?? '');
             setType(initialFilters.type ?? '');
             setMinAmount(initialFilters.minAmount ?? '');
             setMaxAmount(initialFilters.maxAmount ?? '');
@@ -74,6 +86,7 @@ export function TransactionsFilters({
         initialFilters.end,
         initialFilters.categoryNames,
         initialFilters.paymentMethod,
+        initialFilters.accountId,
         initialFilters.type,
         initialFilters.minAmount,
         initialFilters.maxAmount,
@@ -90,11 +103,14 @@ export function TransactionsFilters({
         next.delete('minAmount');
         next.delete('maxAmount');
         next.delete('sort');
+        next.delete('account');
+        next.delete('account');
 
         if (startDate) next.set('start', startDate);
         if (endDate) next.set('end', endDate);
         categoryNames.forEach((name) => next.append('category', name));
         if (paymentMethod) next.set('payment', paymentMethod);
+        if (accountId) next.set('account', accountId);
         if (type) next.set('type', type);
         if (minAmount) next.set('minAmount', minAmount);
         if (maxAmount) next.set('maxAmount', maxAmount);
@@ -129,6 +145,7 @@ export function TransactionsFilters({
         setEndDate(defaultEnd);
         setCategoryNames([]);
         setPaymentMethod('');
+        setAccountId('');
         setType('');
         setMinAmount('');
         setMaxAmount('');
@@ -201,6 +218,22 @@ export function TransactionsFilters({
                             );
                         })}
                     </div>
+                </div>
+
+                <div className="grid gap-2">
+                    <p className="text-sm font-semibold text-slate-900">Account</p>
+                    <select
+                        value={accountId}
+                        onChange={(event) => setAccountId(event.target.value)}
+                        className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                    >
+                        <option value="">All accounts</option>
+                        {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                                {account.name}
+                            </option>
+                        ))}
+                    </select>
                 </div>
 
                 <div className="grid gap-2">

@@ -58,6 +58,18 @@ const transactionSchema = z.object({
 	category_id: z.string().uuid({ message: "Pick a valid category" }),
 	payment_method: z.enum(["cash", "card", "transfer", "other"]),
 	notes: z.string().optional(),
+	account_id: z
+		.string()
+		.uuid({ message: "Pick a valid account" })
+		.optional()
+		.or(z.literal(""))
+		.transform((val) => (val ? val : undefined)),
+	payee: z
+		.string()
+		.max(120, "Payee is too long")
+		.optional()
+		.or(z.literal(""))
+		.transform((val) => (val ? val : undefined)),
 });
 
 const transactionUpdateSchema = transactionSchema.extend({
@@ -140,7 +152,10 @@ export async function createTransaction(_: unknown, formData: FormData) {
 
 	const currencyCode = await getUserCurrencyCode(supabase, user.id);
 
-	const categoriesResponse = await supabase.from("categories").select("id, type");
+	const [categoriesResponse, accountsResponse] = await Promise.all([
+		supabase.from("categories").select("id, type"),
+		supabase.from("accounts").select("id").eq("user_id", user.id),
+	]);
 
 	if (categoriesResponse.error) {
 		console.error(categoriesResponse.error);
@@ -158,6 +173,8 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		occurred_on: formData.get("occurred_on"),
 		payment_method: formData.get("payment_method"),
 		notes: formData.get("notes"),
+		account_id: formData.get("account_id"),
+		payee: formData.get("payee"),
 	});
 
 	if (!payload.success) {
@@ -178,11 +195,25 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		};
 	}
 
+	let accountId: string | undefined;
+	if (payload.data.account_id) {
+		const ownsAccount = (accountsResponse.data ?? []).some((account) => account.id === payload.data.account_id);
+		if (!ownsAccount) {
+			return {
+				ok: false,
+				errors: { account_id: ["Pick one of your accounts."] },
+			};
+		}
+		accountId = payload.data.account_id;
+	}
+
 	const { error } = await supabase.from("transactions").insert({
 		amount: payload.data.amount,
 		occurred_on: payload.data.occurred_on,
 		payment_method: payload.data.payment_method,
 		notes: payload.data.notes ?? null,
+		account_id: accountId ?? null,
+		payee: payload.data.payee ?? null,
 		category_id: payload.data.category_id,
 		type: category.type,
 		user_id: user.id,
@@ -227,6 +258,8 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		payment_method: formData.get("payment_method"),
 		notes: formData.get("notes"),
 		updated_at: formData.get("updated_at"),
+		account_id: formData.get("account_id"),
+		payee: formData.get("payee"),
 	});
 
 	if (!payload.success) {
@@ -236,7 +269,10 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		};
 	}
 
-	const categoriesResponse = await supabase.from("categories").select("id, type").eq("user_id", user.id);
+	const [categoriesResponse, accountsResponse] = await Promise.all([
+		supabase.from("categories").select("id, type").eq("user_id", user.id),
+		supabase.from("accounts").select("id").eq("user_id", user.id),
+	]);
 
 	if (categoriesResponse.error) {
 		console.error(categoriesResponse.error);
@@ -259,6 +295,18 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 		};
 	}
 
+	let accountId: string | undefined;
+	if (payload.data.account_id) {
+		const ownsAccount = (accountsResponse.data ?? []).some((account) => account.id === payload.data.account_id);
+		if (!ownsAccount) {
+			return {
+				ok: false,
+				errors: { account_id: ["Pick one of your accounts."] },
+			};
+		}
+		accountId = payload.data.account_id;
+	}
+
 	let query = supabase
 		.from("transactions")
 		.update({
@@ -266,6 +314,8 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 			occurred_on: payload.data.occurred_on,
 			payment_method: payload.data.payment_method,
 			notes: payload.data.notes ?? null,
+			account_id: accountId ?? null,
+			payee: payload.data.payee ?? null,
 			category_id: payload.data.category_id,
 			type: category.type,
 			updated_at: new Date().toISOString(),
@@ -343,7 +393,7 @@ export async function deleteTransactionById(id: string, version?: string) {
 	}
 
 	const { data, error } = await query
-		.select("id, amount, occurred_on, payment_method, notes, category_id, type, currency_code")
+		.select("id, amount, occurred_on, payment_method, notes, payee, account_id, category_id, type, currency_code")
 		.maybeSingle();
 
 	if (error) {
@@ -365,6 +415,8 @@ export async function restoreTransaction(payload: {
 	occurred_on: string;
 	payment_method: "cash" | "card" | "transfer" | "other";
 	notes: string | null;
+	payee: string | null;
+	account_id: string | null;
 	category_id: string | null;
 	type: "income" | "expense";
 	currency_code: string;
@@ -387,6 +439,8 @@ export async function restoreTransaction(payload: {
 				occurred_on: payload.occurred_on,
 				payment_method: payload.payment_method,
 				notes: payload.notes,
+				payee: payload.payee,
+				account_id: payload.account_id,
 				category_id: payload.category_id,
 				type: payload.type,
 				currency_code: payload.currency_code,

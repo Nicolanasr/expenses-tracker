@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { AccountSettingsForm } from '@/app/account/_components/account-settings-form';
+import { AccountsManager } from '@/app/account/_components/accounts-manager';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +48,41 @@ export default async function AccountPage() {
     const payCycleStartDay = settings?.pay_cycle_start_day ?? 1;
     const hasTransactions = (transactionsCount ?? 0) > 0;
 
+    const { data: accountRows, error: accountsError } = await supabase
+        .from('accounts')
+        .select('id, name, type, institution, starting_balance, default_payment_method')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true });
+
+    if (accountsError) {
+        throw accountsError;
+    }
+
+    const { data: accountTransactions } = await supabase
+        .from('transactions')
+        .select('account_id, amount, type')
+        .eq('user_id', user.id)
+        .not('account_id', 'is', null);
+
+    const accounts = (accountRows ?? []).map((account) => {
+        const startingBalance = Number(account.starting_balance ?? 0);
+        const deltas = (accountTransactions ?? [])
+            .filter((tx) => tx.account_id === account.id)
+            .reduce((sum, tx) => {
+                const value = Number(tx.amount ?? 0);
+                return tx.type === 'income' ? sum + value : sum - value;
+            }, 0);
+        return {
+            id: account.id,
+            name: account.name,
+            type: account.type,
+            institution: account.institution,
+            startingBalance,
+            balance: startingBalance + deltas,
+            defaultPaymentMethod: account.default_payment_method,
+        };
+    });
+
     return (
         <div className="min-h-screen bg-slate-50">
             <MobileNav />
@@ -69,6 +105,8 @@ export default async function AccountPage() {
                         isCurrencyLocked={hasTransactions}
                     />
                 </section>
+
+                <AccountsManager accounts={accounts} />
             </main>
         </div>
     );

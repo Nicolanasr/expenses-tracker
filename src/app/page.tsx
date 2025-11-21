@@ -1,3 +1,4 @@
+import { AccountBalanceCards } from '@/app/_components/account-balance-cards';
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
@@ -37,6 +38,31 @@ type TransactionRow = {
     category_id: string | null;
     categories: CategoryRow | null;
     updated_at: string;
+    account_id: string | null;
+    accounts: {
+        id: string;
+        name: string;
+        type: string;
+        institution: string | null;
+    } | null;
+    payee: string | null;
+};
+
+type AccountRow = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    starting_balance: number;
+    default_payment_method: 'cash' | 'card' | 'transfer' | 'other' | null;
+};
+
+type AccountOption = {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
 };
 
 type NormalizedTransaction = {
@@ -56,6 +82,9 @@ type NormalizedTransaction = {
         color: string | null;
         type: 'income' | 'expense';
     } | null;
+    accountId: string | null;
+    account: AccountOption | null;
+    payee: string | null;
 };
 
 type SavedFilter = {
@@ -166,6 +195,16 @@ function normalizeTransactions(
                 type: transaction.categories.type,
             }
             : null,
+        accountId: transaction.account_id ?? null,
+        account: transaction.accounts
+            ? {
+                id: transaction.accounts.id,
+                name: transaction.accounts.name,
+                type: transaction.accounts.type,
+                institution: transaction.accounts.institution,
+            }
+            : null,
+        payee: transaction.payee ?? null,
     }));
 }
 
@@ -348,21 +387,68 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                 ? 'day'
                 : 'month';
 
-    const { data: categoryRows, error: categoriesError } = await supabase
-        .from('categories')
-        .select('id, name, type, icon, color')
-        .eq('user_id', user!.id)
-        .order('name', { ascending: true });
+    const accountParam = parseParam(resolvedSearchParams, 'account');
+
+    const [
+        { data: categoryRows, error: categoriesError },
+        { data: accountRows, error: accountsError },
+    ] = await Promise.all([
+        supabase
+            .from('categories')
+            .select('id, name, type, icon, color')
+            .eq('user_id', user!.id)
+            .order('name', { ascending: true }),
+        supabase
+            .from('accounts')
+            .select('id, name, type, institution, starting_balance, default_payment_method')
+            .eq('user_id', user!.id)
+            .order('name', { ascending: true }),
+    ]);
 
     if (categoriesError) {
         throw categoriesError;
     }
+    if (accountsError) {
+        throw accountsError;
+    }
 
     const categories = (categoryRows ?? []) as CategoryRow[];
+    let accounts = (accountRows ?? []) as AccountRow[];
+    if (accounts.length === 0) {
+        const { data: insertedAccount, error: insertAccountError } = await supabase
+            .from('accounts')
+            .insert({
+                user_id: user!.id,
+                name: 'Main account',
+                type: 'checking',
+            })
+            .select('id, name, type, institution, starting_balance, default_payment_method')
+            .single();
+        if (insertAccountError) {
+            console.error(insertAccountError);
+        } else if (insertedAccount) {
+            accounts = [insertedAccount as AccountRow];
+        }
+    }
+
     const nameToId = new Map(categories.map((category) => [category.name, category.id]));
     const selectedCategoryIds = categoryNames
         .map((name) => nameToId.get(name))
         .filter((value): value is string => Boolean(value));
+
+    const accountOptionsForFilters = accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        type: account.type,
+        institution: account.institution,
+        defaultPaymentMethod: account.default_payment_method ?? null,
+    }));
+    const accountNameToId = new Map(accountOptionsForFilters.map((account) => [account.name, account.id]));
+    const selectedAccountId = accountParam
+        ? accountOptionsForFilters.some((account) => account.id === accountParam)
+            ? accountParam
+            : accountNameToId.get(accountParam) ?? null
+        : null;
 
     const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
         let query = supabase
@@ -378,6 +464,9 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         notes,
         updated_at,
         category_id,
+        payee,
+        account_id,
+        accounts (id, name, type, institution),
         categories (id, name, type, icon, color)
       `,
             )
@@ -387,6 +476,9 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
         if (selectedCategoryIds.length) {
             query = query.in('category_id', selectedCategoryIds);
+        }
+        if (selectedAccountId) {
+            query = query.eq('account_id', selectedAccountId);
         }
         if (paymentMethod && isPaymentMethod(paymentMethod)) {
             query = query.eq('payment_method', paymentMethod);
@@ -399,15 +491,23 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         return query.order('occurred_on', { ascending: false });
     };
 
-    const [currentTransactionsResponse] = await Promise.all([
+    const [currentTransactionsResponse, accountTransactionsResponse] = await Promise.all([
         buildTransactionsQuery(start, end),
+        supabase
+            .from('transactions')
+            .select('account_id, amount, type')
+            .eq('user_id', user!.id)
+            .not('account_id', 'is', null),
     ]);
 
     if (currentTransactionsResponse.error) {
         throw currentTransactionsResponse.error;
     }
-    const transactions: TransactionRow[] =
-        (currentTransactionsResponse.data ?? []) as TransactionRow[];
+    if (accountTransactionsResponse.error) {
+        throw accountTransactionsResponse.error;
+    }
+    const transactions: TransactionRow[] = (currentTransactionsResponse.data ?? []) as TransactionRow[];
+    const accountTransactions = accountTransactionsResponse.data ?? [];
 
     const categoryOptionsForFilters = categories.map((category) => ({
         id: category.id,
@@ -426,6 +526,13 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const normalizedTransactions = normalizeTransactions(
         transactions,
         currencyCode,
+    );
+    const payeeNames = Array.from(
+        new Set(
+            normalizedTransactions
+                .map((transaction) => transaction.payee)
+                .filter((name): name is string => Boolean(name)),
+        ),
     );
     const totalTransactionsCount = normalizedTransactions.length;
     const paginatedTotalPages = Math.max(
@@ -446,6 +553,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         end,
         categoryIds: selectedCategoryIds.length ? selectedCategoryIds : undefined,
         paymentMethod: paymentMethod ?? undefined,
+        accountId: selectedAccountId ?? undefined,
         search: search ?? undefined,
         sort: 'recent',
     };
@@ -467,6 +575,24 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const topBudgetDisplay = budgetUsage.slice(0, 3);
     const remainingBudgets = budgetUsage.slice(3);
 
+    const accountBalances = accounts.map((account) => {
+        const startingBalance = Number(account.starting_balance ?? 0);
+        const delta = accountTransactions
+            .filter((tx) => tx.account_id === account.id)
+            .reduce((sum, tx) => {
+                const amount = Number(tx.amount ?? 0);
+                return tx.type === 'income' ? sum + amount : sum - amount;
+            }, 0);
+        return {
+            id: account.id,
+            name: account.name,
+            type: account.type,
+            institution: account.institution,
+            balance: startingBalance + delta,
+            currencyCode,
+        };
+    });
+
     return (
         <div className="min-h-screen bg-slate-50">
             <MobileNav />
@@ -474,6 +600,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 py-6">
                 <DashboardFilters
                     categories={categoryOptionsForFilters}
+                    accounts={accountOptionsForFilters}
                     savedFilters={savedFilters}
                     initialFilters={{
                         start: start ?? '',
@@ -481,6 +608,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         categoryNames,
                         paymentMethod: paymentMethod ?? '',
                         search: search ?? '',
+                        accountId: selectedAccountId ?? '',
                     }}
                     summaryInterval={summaryInterval}
                 />
@@ -492,6 +620,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     transactionCount={normalizedTransactions.length}
                     currencyCode={currencyCode}
                 />
+
+                <AccountBalanceCards accounts={accountBalances} />
 
                 {budgetUsage.length ? (
                     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -572,6 +702,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     page={initialPage}
                     filters={transactionsListFilters}
                     categories={categoryOptionsForEditing}
+                    accounts={accountOptionsForFilters}
+                    payees={payeeNames}
                     title="Transactions"
                     emptyMessage="No transactions for this period yet."
                 />

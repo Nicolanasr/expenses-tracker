@@ -6,6 +6,7 @@ type TransactionCacheFilters = {
   sort?: string;
   categoryIds?: string[];
   paymentMethod?: string;
+  accountId?: string;
 };
 
 type TransactionCacheEntry = {
