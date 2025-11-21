@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
 	reactStrictMode: true,
 };
 
-const makeConfig = withPWA({
+const withPWAConfig = withPWA({
 	dest: "public",
 	disable: process.env.NODE_ENV === "development",
 	register: true,
@@ -21,7 +21,7 @@ const makeConfig = withPWA({
 				cacheName: "static-assets",
 				expiration: {
 					maxEntries: 100,
-					maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
+					maxAgeSeconds: 60 * 60 * 24 * 30,
 				},
 			},
 		},
@@ -34,7 +34,7 @@ const makeConfig = withPWA({
 				networkTimeoutSeconds: 3,
 				expiration: {
 					maxEntries: 50,
-					maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+					maxAgeSeconds: 60 * 60 * 24 * 7,
 				},
 			},
 		},
@@ -46,11 +46,18 @@ const makeConfig = withPWA({
 				networkTimeoutSeconds: 3,
 				expiration: {
 					maxEntries: 50,
-					maxAgeSeconds: 60 * 60 * 24 * 14, // 14 days
+					maxAgeSeconds: 60 * 60 * 24 * 14,
 				},
 			},
 		},
 	],
 });
 
-export default makeConfig(nextConfig);
+const configWithImages = {
+	...nextConfig,
+	images: {
+		domains: ["cdn.jsdelivr.net", "logo.clearbit.com", "randomuser.me"],
+	},
+};
+
+export default withPWAConfig(configWithImages);

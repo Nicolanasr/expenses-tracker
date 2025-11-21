@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation';
-
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
@@ -7,6 +5,7 @@ import { SummaryChart } from '@/app/_components/summary-chart';
 import { CategoryPieChart } from '@/app/_components/category-pie-chart';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { OfflineFallback } from '@/app/_components/offline-fallback';
+import { LandingPage } from '@/app/_components/landing-page';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 import { getTopBudgetUsage } from '@/lib/budgets';
@@ -288,12 +287,12 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError?.name == "AuthRetryableFetchError") {
+    if (userError?.name === "AuthRetryableFetchError") {
         return <OfflineFallback />;
     }
 
     if (!user) {
-        redirect('/auth/sign-in');
+        return <LandingPage />;
     }
 
     if (userError) {
