@@ -17,7 +17,8 @@ const TRANSACTION_SELECT = `
     id,
     name,
     type,
-    institution
+    institution,
+    default_payment_method
   ),
   categories (
     id,
@@ -53,7 +54,16 @@ export type TransactionQueryFilters = {
   accountId?: string;
 };
 
-export type TransactionJoinedRow = TransactionRow & { categories: CategoryRow | null; accounts: { id: string; name: string; type: string; institution: string | null } | null };
+export type TransactionJoinedRow = TransactionRow & {
+  categories: CategoryRow | null;
+  accounts: {
+    id: string;
+    name: string;
+    type: string;
+    institution: string | null;
+    default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
+  } | null;
+};
 
 export async function fetchTransactionsPage(
   supabase: SupabaseClient<Database>,

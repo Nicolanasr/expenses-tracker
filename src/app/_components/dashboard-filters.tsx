@@ -7,6 +7,7 @@ import { components, type SingleValue, type OptionProps, type StylesConfig } fro
 import CreatableSelect from 'react-select/creatable';
 import { CategoryMultiSelect } from '@/app/_components/category-multi-select';
 import { saveDashboardFilter, deleteDashboardFilter, type SavedFilter as SavedFilterRecord } from '@/app/dashboard/actions';
+import { ALL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/lib/payment-methods';
 import toast from 'react-hot-toast';
 
 type CategoryOption = {
@@ -50,14 +51,7 @@ type DashboardFiltersProps = {
     summaryInterval: 'month' | 'week' | 'day';
 };
 
-const PAYMENT_METHOD_LABELS = {
-    card: 'Card',
-    cash: 'Cash',
-    transfer: 'Bank transfer',
-    other: 'Other',
-} as const;
-
-type PaymentMethodValue = keyof typeof PAYMENT_METHOD_LABELS;
+type PaymentMethodValue = (typeof ALL_PAYMENT_METHODS)[number];
 
 const presets = [
     {
@@ -111,8 +105,14 @@ export function DashboardFilters({
     const [categoryNames, setCategoryNames] = useState<string[]>(
         initialFilters.categoryNames ?? [],
     );
+    const toValidPaymentMethod = useCallback((value?: string) => {
+        if (!value) return '';
+        return (ALL_PAYMENT_METHODS as readonly string[]).includes(value)
+            ? value
+            : '';
+    }, []);
     const [paymentMethod, setPaymentMethod] = useState<string>(
-        initialFilters.paymentMethod ?? '',
+        toValidPaymentMethod(initialFilters.paymentMethod),
     );
     const [accountId, setAccountId] = useState(initialFilters.accountId ?? '');
     const [search, setSearch] = useState(initialFilters.search ?? '');
@@ -148,7 +148,7 @@ export function DashboardFilters({
             setStartDate(initialFilters.start ?? '');
             setEndDate(initialFilters.end ?? '');
             setCategoryNames(initialFilters.categoryNames ?? []);
-            setPaymentMethod(initialFilters.paymentMethod ?? '');
+            setPaymentMethod(toValidPaymentMethod(initialFilters.paymentMethod));
             setAccountId(initialFilters.accountId ?? '');
             setSearch(initialFilters.search ?? '');
         }, 0);
@@ -161,6 +161,7 @@ export function DashboardFilters({
         initialFilters.paymentMethod,
         initialFilters.accountId,
         initialFilters.search,
+        toValidPaymentMethod,
     ]);
 
     const buildFilterParams = useCallback(() => {

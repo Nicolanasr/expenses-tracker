@@ -4,9 +4,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useTransition } from 'react';
 
 import { CategoryMultiSelect } from '@/app/_components/category-multi-select';
+import { ALL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS, normalizePaymentMethod, type PaymentMethod as BasePaymentMethod } from '@/lib/payment-methods';
 
-const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
-type PaymentMethod = (typeof PAYMENT_METHODS)[number] | '';
+type PaymentMethod = BasePaymentMethod | '';
 
 type CategoryOption = {
     id: string;
@@ -52,15 +52,15 @@ export function TransactionsFilters({
     const [startDate, setStartDate] = useState(initialFilters.start);
     const [endDate, setEndDate] = useState(initialFilters.end);
     const [categoryNames, setCategoryNames] = useState<string[]>(initialFilters.categoryNames);
-    const normalizePaymentMethod = (value: string | undefined) => {
+    const normalizeFilterPaymentMethod = (value: string | undefined) => {
         if (!value) return '';
-        return (PAYMENT_METHODS as readonly string[]).includes(value)
-            ? (value as PaymentMethod)
+        return (ALL_PAYMENT_METHODS as readonly string[]).includes(value)
+            ? (normalizePaymentMethod(value) as PaymentMethod)
             : '';
     };
 
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
-        normalizePaymentMethod(initialFilters.paymentMethod),
+        normalizeFilterPaymentMethod(initialFilters.paymentMethod),
     );
     const [accountId, setAccountId] = useState(initialFilters.accountId ?? '');
     const [type, setType] = useState(initialFilters.type ?? '');
@@ -73,7 +73,7 @@ export function TransactionsFilters({
             setStartDate(initialFilters.start ?? '');
             setEndDate(initialFilters.end ?? '');
             setCategoryNames(initialFilters.categoryNames ?? []);
-            setPaymentMethod(normalizePaymentMethod(initialFilters.paymentMethod));
+            setPaymentMethod(normalizeFilterPaymentMethod(initialFilters.paymentMethod));
             setAccountId(initialFilters.accountId ?? '');
             setType(initialFilters.type ?? '');
             setMinAmount(initialFilters.minAmount ?? '');
@@ -201,7 +201,7 @@ export function TransactionsFilters({
                         >
                             All methods
                         </button>
-                        {PAYMENT_METHODS.map((method) => {
+                        {ALL_PAYMENT_METHODS.map((method) => {
                             const isActive = paymentMethod === method;
                             return (
                                 <button
@@ -213,7 +213,7 @@ export function TransactionsFilters({
                                         : 'border-slate-200 text-slate-700 hover:border-indigo-200 hover:text-indigo-600'
                                         }`}
                                 >
-                                    {method}
+                                    {PAYMENT_METHOD_LABELS[method]}
                                 </button>
                             );
                         })}

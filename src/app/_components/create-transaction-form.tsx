@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import CreatableSelect from 'react-select/creatable';
 
 import { createTransaction } from '@/app/actions';
+import { PAYMENT_METHOD_LABELS, SELECTABLE_PAYMENT_METHODS, type SelectablePaymentMethod } from '@/lib/payment-methods';
 import { queueTransactionMutation } from '@/lib/outbox-sync';
 
 type Category = {
@@ -21,7 +22,7 @@ type Account = {
     name: string;
     type: string;
     institution?: string | null;
-    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 type FormState = {
@@ -44,13 +45,6 @@ function SubmitButton() {
     );
 }
 
-const PAYMENT_METHOD_LABELS = {
-    card: 'Card',
-    cash: 'Cash',
-    transfer: 'Bank transfer',
-    other: 'Other',
-} as const;
-
 function getCategoryIcon(category: Category) {
     if (category.icon && category.icon.trim().length > 0) {
         return category.icon;
@@ -72,9 +66,7 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
     );
     const [activeType, setActiveType] = useState<'income' | 'expense'>('expense');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
-    const [paymentMethod, setPaymentMethod] = useState<
-        keyof typeof PAYMENT_METHOD_LABELS
-    >('card');
+    const [paymentMethod, setPaymentMethod] = useState<SelectablePaymentMethod>('card');
     const defaultAccountId = accounts[0]?.id ?? '';
     const [selectedAccountId, setSelectedAccountId] = useState(defaultAccountId);
     const [accountManuallySelected, setAccountManuallySelected] = useState(false);
@@ -419,14 +411,12 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                     Payment method
                 </p>
                 <div className="flex flex-wrap gap-2">
-                    {(Object.entries(
-                        PAYMENT_METHOD_LABELS,
-                    ) as Array<[keyof typeof PAYMENT_METHOD_LABELS, string]>).map(
-                        ([value, label]) => {
-                            const isSelected = paymentMethod === value;
-                            return (
-                                <label
-                                    key={value}
+                    {SELECTABLE_PAYMENT_METHODS.map((value) => {
+                        const label = PAYMENT_METHOD_LABELS[value];
+                        const isSelected = paymentMethod === value;
+                        return (
+                            <label
+                                key={value}
                                     className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 data-[active=true]:border-indigo-500 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-600"
                                     data-active={isSelected}
                                 >
@@ -441,11 +431,10 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                                             setAccountManuallySelected(false);
                                         }}
                                     />
-                                    {label}
-                                </label>
-                            );
-                        },
-                    )}
+                                {label}
+                            </label>
+                        );
+                    })}
                 </div>
                 {state.errors?.payment_method?.length ? (
                     <p className="text-xs text-red-500">

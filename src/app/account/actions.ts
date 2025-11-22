@@ -98,7 +98,7 @@ const accountSchema = z.object({
 			return Number.isNaN(parsed) ? 0 : parsed;
 		}),
 	default_payment_method: z
-		.enum(["cash", "card", "transfer", "other"])
+		.enum(["cash", "card", "transfer", "bank_transfer", "other"])
 		.optional()
 		.or(z.literal(""))
 		.transform((val) => (val ? val : null)),

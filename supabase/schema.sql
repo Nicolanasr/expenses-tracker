@@ -21,7 +21,7 @@ create table if not exists public.accounts (
   institution text,
   color text,
   starting_balance numeric(12, 2) not null default 0,
-  default_payment_method text check (default_payment_method in ('cash','card','transfer','other')),
+  default_payment_method text check (default_payment_method in ('cash','card','transfer','bank_transfer','account_transfer','other')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, name)
@@ -48,7 +48,7 @@ create table if not exists public.transactions (
   currency_code text not null default 'USD',
   occurred_on date not null,
   payment_method text not null check (
-    payment_method in ('cash', 'card', 'transfer', 'other')
+    payment_method in ('cash', 'card', 'transfer', 'bank_transfer', 'account_transfer', 'other')
   ),
   payee text,
   notes text,

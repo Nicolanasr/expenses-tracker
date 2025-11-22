@@ -56,7 +56,7 @@ const transactionSchema = z.object({
 		}),
 	occurred_on: z.string().min(1, "Date is required"),
 	category_id: z.string().uuid({ message: "Pick a valid category" }),
-	payment_method: z.enum(["cash", "card", "transfer", "other"]),
+	payment_method: z.enum(["card", "cash", "bank_transfer", "account_transfer", "other"]),
 	notes: z.string().optional(),
 	account_id: z
 		.string()
@@ -413,7 +413,7 @@ export async function restoreTransaction(payload: {
 	id: string;
 	amount: number;
 	occurred_on: string;
-	payment_method: "cash" | "card" | "transfer" | "other";
+	payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 	notes: string | null;
 	payee: string | null;
 	account_id: string | null;
@@ -430,25 +430,23 @@ export async function restoreTransaction(payload: {
 		throw new Error("Not signed in");
 	}
 
-	const { error } = await supabase
-		.from("transactions")
-		.upsert(
-			{
-				id: payload.id,
-				amount: payload.amount,
-				occurred_on: payload.occurred_on,
-				payment_method: payload.payment_method,
-				notes: payload.notes,
-				payee: payload.payee,
-				account_id: payload.account_id,
-				category_id: payload.category_id,
-				type: payload.type,
-				currency_code: payload.currency_code,
-				user_id: user.id,
-				updated_at: new Date().toISOString(),
-			},
-			{ onConflict: "id" },
-		);
+	const { error } = await supabase.from("transactions").upsert(
+		{
+			id: payload.id,
+			amount: payload.amount,
+			occurred_on: payload.occurred_on,
+			payment_method: payload.payment_method,
+			notes: payload.notes,
+			payee: payload.payee,
+			account_id: payload.account_id,
+			category_id: payload.category_id,
+			type: payload.type,
+			currency_code: payload.currency_code,
+			user_id: user.id,
+			updated_at: new Date().toISOString(),
+		},
+		{ onConflict: "id" }
+	);
 
 	if (error) {
 		throw error;

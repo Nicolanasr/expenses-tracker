@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 
 import { TransactionItem } from '@/app/_components/transaction-item';
 import { cacheTransactions, readCachedTransactions } from '@/lib/cache';
+import { normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 
 const PAGE_OPTIONS = [7, 14, 28, 56, 112];
 
@@ -13,7 +14,7 @@ export type Transaction = {
   type: 'income' | 'expense';
   currencyCode: string;
   occurredOn: string;
-  paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
+  paymentMethod: PaymentMethod;
   notes: string | null;
   payee: string | null;
   updatedAt: string;
@@ -31,7 +32,7 @@ export type Transaction = {
     name: string;
     type: string;
     institution: string | null;
-    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
   } | null;
 };
 
@@ -48,7 +49,7 @@ export type AccountOption = {
   name: string;
   type: string;
   institution: string | null;
-  defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+  defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 export type TransactionFilters = {
@@ -103,6 +104,7 @@ export function TransactionsPaginatedList({
       (list: Partial<Transaction>[]) =>
         (list ?? []).map((tx) => ({
           ...tx,
+          paymentMethod: normalizePaymentMethod(tx.paymentMethod ?? 'other'),
           updatedAt: tx.updatedAt ?? tx.occurredOn ?? new Date().toISOString(),
           category:
             tx.categoryId && !tx.category
@@ -165,7 +167,7 @@ export function TransactionsPaginatedList({
               type: (payload.type as Transaction['type']) ?? 'expense',
               currencyCode: 'USD',
               occurredOn: (payload.occurred_on as string) ?? new Date().toISOString().slice(0, 10),
-              paymentMethod: (payload.payment_method as Transaction['paymentMethod']) ?? 'card',
+              paymentMethod: normalizePaymentMethod((payload.payment_method as string) ?? 'other'),
               notes: (payload.notes as string) ?? null,
               payee: (payload.payee as string | null | undefined) ?? null,
               categoryId,
@@ -192,7 +194,7 @@ export function TransactionsPaginatedList({
                     ...row,
                     amount: payload.amount !== undefined ? Number(payload.amount) : row.amount,
                     occurredOn: (payload.occurred_on as string) ?? row.occurredOn,
-                    paymentMethod: (payload.payment_method as Transaction['paymentMethod']) ?? row.paymentMethod,
+                    paymentMethod: payload.payment_method ? normalizePaymentMethod(payload.payment_method as string) : row.paymentMethod,
                     notes: (payload.notes as string | null | undefined) ?? row.notes,
                     categoryId: (payload.category_id as string | null | undefined) ?? row.categoryId,
                     category:

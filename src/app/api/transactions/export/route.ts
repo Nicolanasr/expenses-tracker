@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { createSupabaseServerActionClient } from '@/lib/supabase/server';
 import { type TransactionQueryFilters } from '@/lib/transactions/pagination';
-
-const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
+import { ALL_PAYMENT_METHODS, normalizePaymentMethod } from '@/lib/payment-methods';
 
 type RequestBody = {
   filters?: TransactionQueryFilters;
@@ -24,7 +23,10 @@ const sanitizeFilters = (filters?: TransactionQueryFilters): TransactionQueryFil
     start,
     end,
     categoryIds: normalizedCategories && normalizedCategories.length ? normalizedCategories : undefined,
-    paymentMethod: filters.paymentMethod && PAYMENT_METHODS.includes(filters.paymentMethod) ? filters.paymentMethod : undefined,
+    paymentMethod:
+      filters.paymentMethod && (ALL_PAYMENT_METHODS as readonly string[]).includes(filters.paymentMethod)
+        ? filters.paymentMethod
+        : undefined,
     search: filters.search?.slice(0, 100) || undefined,
     type: filters.type === 'income' || filters.type === 'expense' ? filters.type : undefined,
     minAmount: typeof filters.minAmount === 'number' ? filters.minAmount : undefined,
@@ -124,7 +126,7 @@ export async function POST(request: Request) {
           toCsvValue(row.currency_code),
           toCsvValue(row.type),
           toCsvValue((row as { categories?: { name?: string } }).categories?.name ?? ''),
-          toCsvValue(row.payment_method),
+          toCsvValue(normalizePaymentMethod(row.payment_method)),
           toCsvValue(row.notes ?? ''),
         ].join(','),
       ),

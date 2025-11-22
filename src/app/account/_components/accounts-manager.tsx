@@ -21,7 +21,7 @@ type Account = {
     institution: string | null;
     startingBalance: number;
     balance: number;
-    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 const INITIAL_STATE: AccountFormState = { ok: false };
@@ -99,7 +99,7 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
                     <option value="">None</option>
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
-                    <option value="transfer">Transfer</option>
+                    <option value="bank_transfer">Bank transfer</option>
                     <option value="other">Other</option>
                 </select>
             </div>
@@ -197,7 +197,7 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
                                                 <option value="">No link</option>
                                                 <option value="cash">Cash</option>
                                                 <option value="card">Card</option>
-                                                <option value="transfer">Transfer</option>
+                                                <option value="bank_transfer">Bank transfer</option>
                                                 <option value="other">Other</option>
                                             </select>
                                             <div className="flex items-center gap-2">

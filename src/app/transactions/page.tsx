@@ -5,14 +5,12 @@ import { MobileNav } from '@/app/_components/mobile-nav';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { fetchTransactionsPage } from '@/lib/transactions/pagination';
+import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
 import { TransactionsExportButton } from '@/app/transactions/_components/transactions-export-button';
 import { OfflineFallback } from '../_components/offline-fallback';
 
 export const dynamic = 'force-dynamic';
-
-const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
-type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 const SORT_FIELDS = {
     recent: { column: 'occurred_on', ascending: false, label: 'Newest first' },
@@ -36,7 +34,7 @@ type TransactionRow = {
     type: 'income' | 'expense';
     currency_code: string;
     occurred_on: string;
-    payment_method: 'cash' | 'card' | 'transfer' | 'other';
+    payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other';
     notes: string | null;
     payee: string | null;
     category_id: string | null;
@@ -47,6 +45,7 @@ type TransactionRow = {
         name: string;
         type: string;
         institution: string | null;
+        default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
     } | null;
     updated_at: string;
 };
@@ -56,7 +55,7 @@ type AccountRow = {
     name: string;
     type: string;
     institution: string | null;
-    default_payment_method: 'cash' | 'card' | 'transfer' | 'other' | null;
+    default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 type AccountOption = {
@@ -64,7 +63,7 @@ type AccountOption = {
     name: string;
     type: string;
     institution: string | null;
-    defaultPaymentMethod: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 function parseParam(params: Record<string, string | string[] | undefined>, key: string) {
@@ -147,7 +146,7 @@ export default async function TransactionsPage({
     const minAmountValue = parseNumberParam(minAmount);
     const maxAmountValue = parseNumberParam(maxAmount);
     const sanitizedPaymentMethod =
-        paymentFilter && (PAYMENT_METHODS as readonly string[]).includes(paymentFilter)
+        paymentFilter && (ALL_PAYMENT_METHODS as readonly string[]).includes(paymentFilter)
             ? (paymentFilter as PaymentMethod)
             : undefined;
     const sanitizedType = typeFilter === 'income' || typeFilter === 'expense' ? (typeFilter as 'income' | 'expense') : undefined;
@@ -247,7 +246,7 @@ export default async function TransactionsPage({
         name: account.name,
         type: account.type,
         institution: account.institution,
-        defaultPaymentMethod: account.default_payment_method ?? null,
+        defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
     }));
     const accountNameToId = new Map(accountOptions.map((account) => [account.name, account.id]));
     const selectedAccountId = accountFilter
@@ -282,7 +281,7 @@ export default async function TransactionsPage({
         type: transaction.type,
         currencyCode: transaction.currency_code ?? currencyCode,
         occurredOn: transaction.occurred_on,
-        paymentMethod: transaction.payment_method,
+        paymentMethod: normalizePaymentMethod(transaction.payment_method),
         notes: transaction.notes,
         payee: transaction.payee ?? null,
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
@@ -303,6 +302,7 @@ export default async function TransactionsPage({
                 name: transaction.accounts.name,
                 type: transaction.accounts.type,
                 institution: transaction.accounts.institution,
+                defaultPaymentMethod: transaction.accounts.default_payment_method ?? null,
             }
             : null,
     }));
@@ -331,7 +331,7 @@ export default async function TransactionsPage({
         start,
         end,
         categoryNames: initialCategoryNames,
-        paymentMethod: paymentFilter ?? '',
+        paymentMethod: sanitizedPaymentMethod ?? '',
         type: typeFilter ?? '',
         minAmount: minAmount ?? '',
         maxAmount: maxAmount ?? '',

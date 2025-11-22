@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 
 import { createSupabaseServerActionClient } from '@/lib/supabase/server';
 import { fetchTransactionsPage, type TransactionQueryFilters } from '@/lib/transactions/pagination';
+import { ALL_PAYMENT_METHODS, normalizePaymentMethod } from '@/lib/payment-methods';
 
 const ALLOWED_PAGE_SIZES = [7, 14, 28, 56, 112];
 const DEFAULT_PAGE_SIZE = 14;
-
-const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
 
 type RequestBody = {
   page?: number;
@@ -44,7 +43,10 @@ const sanitizeFilters = (filters?: TransactionQueryFilters): TransactionQueryFil
     start,
     end,
     categoryIds: normalizedCategoryIds && normalizedCategoryIds.length ? normalizedCategoryIds : undefined,
-    paymentMethod: filters.paymentMethod && PAYMENT_METHODS.includes(filters.paymentMethod) ? filters.paymentMethod : undefined,
+    paymentMethod:
+      filters.paymentMethod && (ALL_PAYMENT_METHODS as readonly string[]).includes(filters.paymentMethod)
+        ? filters.paymentMethod
+        : undefined,
     search: filters.search?.slice(0, 100) || undefined,
     type: filters.type === 'income' || filters.type === 'expense' ? filters.type : undefined,
     minAmount: typeof filters.minAmount === 'number' ? filters.minAmount : undefined,
@@ -90,7 +92,7 @@ export async function POST(request: Request) {
       type: transaction.type,
       currencyCode: transaction.currency_code ?? currencyCode,
       occurredOn: transaction.occurred_on,
-      paymentMethod: transaction.payment_method,
+      paymentMethod: normalizePaymentMethod(transaction.payment_method),
       notes: transaction.notes,
       payee: transaction.payee,
       updatedAt: transaction.updated_at,

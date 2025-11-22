@@ -10,6 +10,7 @@ import { LandingPage } from '@/app/_components/landing-page';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 import { getTopBudgetUsage } from '@/lib/budgets';
+import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ type TransactionRow = {
     type: 'income' | 'expense';
     currency_code: string;
     occurred_on: string;
-    payment_method: 'cash' | 'card' | 'transfer' | 'other';
+    payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other';
     notes: string | null;
     category_id: string | null;
     categories: CategoryRow | null;
@@ -54,7 +55,7 @@ type AccountRow = {
     type: string;
     institution: string | null;
     starting_balance: number;
-    default_payment_method: 'cash' | 'card' | 'transfer' | 'other' | null;
+    default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 type AccountOption = {
@@ -62,7 +63,7 @@ type AccountOption = {
     name: string;
     type: string;
     institution: string | null;
-    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 type NormalizedTransaction = {
@@ -71,7 +72,7 @@ type NormalizedTransaction = {
     type: 'income' | 'expense';
     currencyCode: string;
     occurredOn: string;
-    paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
+    paymentMethod: PaymentMethod;
     notes: string | null;
     categoryId: string | null;
     updatedAt: string;
@@ -93,13 +94,10 @@ type SavedFilter = {
     query: string;
 };
 
-const PAYMENT_METHODS = ['card', 'cash', 'transfer', 'other'] as const;
-type PaymentMethod = (typeof PAYMENT_METHODS)[number];
-
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
 
 function isPaymentMethod(value: string): value is PaymentMethod {
-    return (PAYMENT_METHODS as readonly string[]).includes(value);
+    return (ALL_PAYMENT_METHODS as readonly string[]).includes(value);
 }
 
 function parseParam(
@@ -182,7 +180,7 @@ function normalizeTransactions(
         type: transaction.type,
         currencyCode: transaction.currency_code ?? fallbackCurrency,
         occurredOn: transaction.occurred_on,
-        paymentMethod: transaction.payment_method,
+        paymentMethod: normalizePaymentMethod(transaction.payment_method),
         notes: transaction.notes,
         categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
         updatedAt: transaction.updated_at,
@@ -377,6 +375,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
     const categoryNames = parseCategoryParams(resolvedSearchParams, 'category');
     const paymentMethod = parseParam(resolvedSearchParams, 'payment');
+    const sanitizedPaymentMethod = paymentMethod && isPaymentMethod(paymentMethod) ? paymentMethod : undefined;
     const search = parseParam(resolvedSearchParams, 'search');
     const intervalParam = parseParam(resolvedSearchParams, 'interval');
     const pageParam = parseParam(resolvedSearchParams, 'page');
@@ -441,7 +440,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         name: account.name,
         type: account.type,
         institution: account.institution,
-        defaultPaymentMethod: account.default_payment_method ?? null,
+        defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
     }));
     const accountNameToId = new Map(accountOptionsForFilters.map((account) => [account.name, account.id]));
     const selectedAccountId = accountParam
@@ -480,8 +479,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         if (selectedAccountId) {
             query = query.eq('account_id', selectedAccountId);
         }
-        if (paymentMethod && isPaymentMethod(paymentMethod)) {
-            query = query.eq('payment_method', paymentMethod);
+        if (sanitizedPaymentMethod) {
+            query = query.eq('payment_method', sanitizedPaymentMethod);
         }
         if (search && search.trim().length > 0) {
             const term = `%${search.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
@@ -552,24 +551,26 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         start,
         end,
         categoryIds: selectedCategoryIds.length ? selectedCategoryIds : undefined,
-        paymentMethod: paymentMethod ?? undefined,
+        paymentMethod: sanitizedPaymentMethod,
         accountId: selectedAccountId ?? undefined,
         search: search ?? undefined,
         sort: 'recent',
     };
-    const totalIncome = normalizedTransactions
+    const reportTransactions = normalizedTransactions.filter((transaction) => transaction.paymentMethod !== 'account_transfer');
+
+    const totalIncome = reportTransactions
         .filter((transaction) => transaction.type === 'income')
         .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const totalExpenses = normalizedTransactions
+    const totalExpenses = reportTransactions
         .filter((transaction) => transaction.type === 'expense')
         .reduce((sum, transaction) => sum + transaction.amount, 0);
     const balance = totalIncome - totalExpenses;
 
     const timelinePoints = computeTimeline(
-        normalizedTransactions,
+        reportTransactions,
         summaryInterval,
     );
-    const categoryBreakdown = computeCategoryBreakdown(normalizedTransactions);
+    const categoryBreakdown = computeCategoryBreakdown(reportTransactions);
 
     const budgetUsage = await getTopBudgetUsage(defaultCycleKey, 50);
     const topBudgetDisplay = budgetUsage.slice(0, 3);
@@ -606,7 +607,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         start: start ?? '',
                         end: end ?? '',
                         categoryNames,
-                        paymentMethod: paymentMethod ?? '',
+                        paymentMethod: sanitizedPaymentMethod ?? '',
                         search: search ?? '',
                         accountId: selectedAccountId ?? '',
                     }}

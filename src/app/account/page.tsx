@@ -5,6 +5,7 @@ import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { AccountSettingsForm } from '@/app/account/_components/account-settings-form';
 import { AccountsManager } from '@/app/account/_components/accounts-manager';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
+import { normalizePaymentMethod } from '@/lib/payment-methods';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +80,7 @@ export default async function AccountPage() {
             institution: account.institution,
             startingBalance,
             balance: startingBalance + deltas,
-            defaultPaymentMethod: account.default_payment_method,
+            defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
         };
     });
 

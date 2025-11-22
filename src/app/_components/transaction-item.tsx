@@ -11,6 +11,7 @@ import {
     type FormState,
     updateTransaction,
 } from '@/app/actions';
+import { PAYMENT_METHOD_LABELS, SELECTABLE_PAYMENT_METHODS, normalizePaymentMethod, type SelectablePaymentMethod } from '@/lib/payment-methods';
 import { queueTransactionMutation } from '@/lib/outbox-sync';
 import { MdDelete, MdModeEdit } from 'react-icons/md';
 
@@ -18,12 +19,6 @@ const DATE = new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
 });
 
-const PAYMENT_METHOD_LABELS = {
-    card: 'Card',
-    cash: 'Cash',
-    transfer: 'Bank transfer',
-    other: 'Other',
-} as const;
 
 type CategoryOption = {
     id: string;
@@ -38,7 +33,7 @@ type AccountOption = {
     name: string;
     type: string;
     institution: string | null;
-    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'other' | null;
+    defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
 };
 
 type TransactionData = {
@@ -46,7 +41,7 @@ type TransactionData = {
     amount: number;
     type: 'income' | 'expense';
     occurredOn: string;
-    paymentMethod: 'cash' | 'card' | 'transfer' | 'other';
+    paymentMethod: SelectablePaymentMethod | 'account_transfer';
     notes: string | null;
     payee: string | null;
     categoryId: string | null;
@@ -84,9 +79,9 @@ function TransactionEditForm({
         updateTransaction,
         EDIT_INITIAL_STATE,
     );
-    const [paymentMethod, setPaymentMethod] = useState<
-        keyof typeof PAYMENT_METHOD_LABELS
-    >(transaction.paymentMethod);
+    const [paymentMethod, setPaymentMethod] = useState<SelectablePaymentMethod>(
+        transaction.paymentMethod === 'account_transfer' ? 'other' : transaction.paymentMethod,
+    );
     const [payeeValue, setPayeeValue] = useState(transaction.payee ?? '');
     const [selectedAccountId, setSelectedAccountId] = useState(transaction.accountId ?? '');
     const [accountManuallySelected, setAccountManuallySelected] = useState(Boolean(transaction.accountId));
@@ -224,33 +219,31 @@ function TransactionEditForm({
             <div className="grid gap-2">
                 <p className="text-sm font-semibold text-slate-900">Payment method</p>
                 <div className="flex flex-wrap gap-2">
-                    {(Object.entries(
-                        PAYMENT_METHOD_LABELS,
-                    ) as Array<[keyof typeof PAYMENT_METHOD_LABELS, string]>).map(
-                        ([value, label]) => {
-                            const isSelected = paymentMethod === value;
-                            return (
-                                <label
-                                    key={value}
-                                    className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 data-[active=true]:border-indigo-500 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-600"
-                                    data-active={isSelected}
-                                >
-                                    <input
-                                        type="radio"
-                                        name="payment_method"
-                                        value={value}
-                                        className="sr-only"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                            setPaymentMethod(value);
-                                            setAccountManuallySelected(false);
-                                        }}
-                                    />
-                                    {label}
-                                </label>
-                            );
-                        },
-                    )}
+                    {SELECTABLE_PAYMENT_METHODS.map((value) => {
+                        const label = PAYMENT_METHOD_LABELS[value];
+                        const isSelected = paymentMethod === value;
+                        console.log(payeeValue, paymentMethod, value)
+                        return (
+                            <label
+                                key={value}
+                                className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 data-[active=true]:border-indigo-500 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-600"
+                                data-active={isSelected}
+                            >
+                                <input
+                                    type="radio"
+                                    name="payment_method"
+                                    value={value}
+                                    className="sr-only"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                        setPaymentMethod(value);
+                                        setAccountManuallySelected(false);
+                                    }}
+                                />
+                                {label}
+                            </label>
+                        );
+                    })}
                 </div>
                 {state.errors?.payment_method?.length ? (
                     <p className="text-xs text-red-500">
@@ -374,7 +367,7 @@ function DeleteTransactionButton({ transactionId, updatedAt }: { transactionId: 
                                                     id: deleted.id,
                                                     amount: Number(deleted.amount ?? 0),
                                                     occurred_on: deleted.occurred_on,
-                                                    payment_method: deleted.payment_method,
+                                                    payment_method: normalizePaymentMethod(deleted.payment_method),
                                                     notes: deleted.notes,
                                                     payee: deleted.payee ?? null,
                                                     account_id: deleted.account_id ?? null,

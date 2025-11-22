@@ -2,13 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
-export type Json =
-	| string
-	| number
-	| boolean
-	| null
-	| { [key: string]: Json | undefined }
-	| Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
 	public: {
@@ -22,7 +16,7 @@ export type Database = {
 					institution: string | null;
 					color: string | null;
 					starting_balance: number;
-					default_payment_method: "cash" | "card" | "transfer" | "other" | null;
+				default_payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at: string;
 					updated_at: string;
 				};
@@ -34,7 +28,7 @@ export type Database = {
 					institution?: string | null;
 					color?: string | null;
 					starting_balance?: number;
-					default_payment_method?: "cash" | "card" | "transfer" | "other" | null;
+				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
 				};
@@ -46,7 +40,7 @@ export type Database = {
 					institution?: string | null;
 					color?: string | null;
 					starting_balance?: number;
-					default_payment_method?: "cash" | "card" | "transfer" | "other" | null;
+				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
 				};
@@ -56,7 +50,7 @@ export type Database = {
 						columns: ["user_id"];
 						referencedRelation: "users";
 						referencedColumns: ["id"];
-					},
+					}
 				];
 			};
 			budgets: {
@@ -100,7 +94,7 @@ export type Database = {
 						isOneToOne?: true;
 						referencedRelation: "users";
 						referencedColumns: ["id"];
-					},
+					}
 				];
 			};
 			categories: {
@@ -141,7 +135,7 @@ export type Database = {
 						isOneToOne?: true;
 						referencedRelation: "users";
 						referencedColumns: ["id"];
-					},
+					}
 				];
 			};
 			transactions: {
@@ -155,7 +149,7 @@ export type Database = {
 					payee: string | null;
 					notes: string | null;
 					occurred_on: string;
-					payment_method: "cash" | "card" | "transfer" | "other";
+				payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
 					updated_at: string;
@@ -170,7 +164,7 @@ export type Database = {
 					payee?: string | null;
 					notes?: string | null;
 					occurred_on: string;
-					payment_method: "cash" | "card" | "transfer" | "other";
+				payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
 					updated_at?: string;
@@ -185,7 +179,7 @@ export type Database = {
 					payee?: string | null;
 					notes?: string | null;
 					occurred_on?: string;
-					payment_method?: "cash" | "card" | "transfer" | "other";
+				payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type?: "income" | "expense";
 					user_id?: string;
 					updated_at?: string;
@@ -209,7 +203,7 @@ export type Database = {
 						isOneToOne?: true;
 						referencedRelation: "users";
 						referencedColumns: ["id"];
-					},
+					}
 				];
 			};
 			user_settings: {
@@ -247,7 +241,7 @@ export type Database = {
 						isOneToOne?: true;
 						referencedRelation: "users";
 						referencedColumns: ["id"];
-					},
+					}
 				];
 			};
 		};
