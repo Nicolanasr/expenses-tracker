@@ -175,9 +175,36 @@ export async function deleteAccountAction(_prev: AccountFormState, formData: For
 		return { ok: false, message: "You must be signed in." };
 	}
 
-	const { error } = await supabase.from("accounts").delete().eq("id", accountId).eq("user_id", user.id);
-	if (error) {
+	const { data: existing, error: fetchError } = await supabase
+		.from("accounts")
+		.select("*")
+		.eq("id", accountId)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
+
+	if (fetchError) {
+		console.error(fetchError);
 		return { ok: false, message: "Unable to delete account. Remove linked transactions first." };
+	}
+
+	if (existing) {
+		const deletedAt = new Date().toISOString();
+		const { error } = await supabase
+			.from("accounts")
+			.update({ deleted_at: deletedAt, updated_at: deletedAt })
+			.eq("id", accountId)
+			.eq("user_id", user.id);
+		if (error) {
+			return { ok: false, message: "Unable to delete account. Remove linked transactions first." };
+		}
+		await supabase.from("audit_log").insert({
+			user_id: user.id,
+			table_name: "accounts",
+			record_id: accountId,
+			action: "delete",
+			snapshot: existing as unknown as Record<string, unknown>,
+		});
 	}
 
 	revalidatePath("/account");

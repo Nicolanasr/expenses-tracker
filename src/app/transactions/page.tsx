@@ -197,11 +197,13 @@ export default async function TransactionsPage({
                 .from('categories')
                 .select('id, name, type, icon, color')
                 .eq('user_id', userId!)
+                .is('deleted_at', null)
                 .order('name', { ascending: true }),
             supabase
                 .from('accounts')
                 .select('id, name, type, institution, default_payment_method')
                 .eq('user_id', userId!)
+                .is('deleted_at', null)
                 .order('name', { ascending: true }),
         ]);
 
@@ -286,6 +288,7 @@ export default async function TransactionsPage({
             'id, name, amount, type, payment_method, notes, auto_log, frequency, next_run_on, categories (id, name), accounts (id, name)',
         )
         .eq('user_id', userId!)
+        .is('deleted_at', null)
         .order('name', { ascending: true });
     if (recurringError) {
         throw recurringError;

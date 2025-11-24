@@ -53,6 +53,7 @@ export default async function AccountPage() {
         .from('accounts')
         .select('id, name, type, institution, starting_balance, default_payment_method')
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .order('name', { ascending: true });
 
     if (accountsError) {
@@ -63,6 +64,7 @@ export default async function AccountPage() {
         .from('transactions')
         .select('account_id, amount, type')
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .not('account_id', 'is', null);
 
     const accounts = (accountRows ?? []).map((account) => {

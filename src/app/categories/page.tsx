@@ -39,6 +39,7 @@ export default async function CategoriesPage() {
     const { data } = await supabase
         .from('categories')
         .select('id, name, type, icon, color, created_at, updated_at')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
     const categories: Category[] = data ?? [];

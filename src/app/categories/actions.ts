@@ -121,14 +121,39 @@ export async function deleteCategory(prevState: FormState, formData: FormData): 
 		};
 	}
 
-	const { error } = await supabase.from("categories").delete().eq("id", payload.data.id).eq("user_id", user.id);
+	const { data: existing, error: fetchError } = await supabase
+		.from("categories")
+		.select("*")
+		.eq("id", payload.data.id)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
 
-	if (error) {
-		console.error(error);
-		return {
-			ok: false,
-			error: "Unable to delete category.",
-		};
+	if (fetchError) {
+		console.error(fetchError);
+		return { ok: false, error: "Unable to delete category." };
+	}
+
+	if (existing) {
+		const deletedAt = new Date().toISOString();
+		const { error } = await supabase
+			.from("categories")
+			.update({ deleted_at: deletedAt, updated_at: deletedAt })
+			.eq("id", payload.data.id)
+			.eq("user_id", user.id);
+
+		if (error) {
+			console.error(error);
+			return { ok: false, error: "Unable to delete category." };
+		}
+
+		await supabase.from("audit_log").insert({
+			user_id: user.id,
+			table_name: "categories",
+			record_id: payload.data.id,
+			action: "delete",
+			snapshot: existing as unknown as Record<string, unknown>,
+		});
 	}
 
 	revalidatePath("/categories");
@@ -149,26 +174,50 @@ export async function deleteCategoryById(id: string, version?: string) {
 		throw userError ?? new Error("You must be signed in to delete categories.");
 	}
 
-	let query = supabase.from("categories").delete().eq("id", id).eq("user_id", user.id);
-	if (version) {
-		query = query.eq("updated_at", version);
+	const { data: existing, error: fetchError } = await supabase
+		.from("categories")
+		.select("id, name, icon, color, type, updated_at")
+		.eq("id", id)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
+
+	if (fetchError) {
+		throw fetchError;
 	}
 
-	const { data, error } = await query.select("id, name, icon, color, type").maybeSingle();
+	if (!existing) {
+		throw new Error("Category not found or already changed.");
+	}
+
+	if (version && existing.updated_at !== version) {
+		throw new Error("Category was updated elsewhere.");
+	}
+
+	const deletedAt = new Date().toISOString();
+	const { error } = await supabase
+		.from("categories")
+		.update({ deleted_at: deletedAt, updated_at: deletedAt })
+		.eq("id", id)
+		.eq("user_id", user.id);
 
 	if (error) {
 		throw error;
 	}
 
-	if (!data) {
-		throw new Error("Category not found or already changed.");
-	}
+	await supabase.from("audit_log").insert({
+		user_id: user.id,
+		table_name: "categories",
+		record_id: id,
+		action: "delete",
+		snapshot: existing as unknown as Record<string, unknown>,
+	});
 
 	revalidatePath("/categories");
 	revalidatePath("/");
 	revalidatePath("/transactions");
 
-	return data;
+	return existing;
 }
 
 export async function restoreCategory(category: { id: string; name: string; icon: string | null; color: string | null; type: "income" | "expense" }) {
@@ -182,24 +231,27 @@ export async function restoreCategory(category: { id: string; name: string; icon
 		throw userError ?? new Error("You must be signed in to restore categories.");
 	}
 
+	const restoredAt = new Date().toISOString();
 	const { error } = await supabase
 		.from("categories")
-		.upsert(
-			{
-				id: category.id,
-				name: category.name,
-				icon: category.icon ?? "🏷️",
-				color: category.color,
-				type: category.type,
-				user_id: user.id,
-				updated_at: new Date().toISOString(),
-			},
-			{ onConflict: "id" },
-		);
+		.update({
+			deleted_at: null,
+			updated_at: restoredAt,
+		})
+		.eq("id", category.id)
+		.eq("user_id", user.id);
 
 	if (error) {
 		throw error;
 	}
+
+	await supabase.from("audit_log").insert({
+		user_id: user.id,
+		table_name: "categories",
+		record_id: category.id,
+		action: "restore",
+		snapshot: category as unknown as Record<string, unknown>,
+	});
 
 	revalidatePath("/categories");
 	revalidatePath("/");

@@ -411,11 +411,13 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .from('categories')
             .select('id, name, type, icon, color')
             .eq('user_id', user!.id)
+            .is('deleted_at', null)
             .order('name', { ascending: true }),
         supabase
             .from('accounts')
             .select('id, name, type, institution, starting_balance, default_payment_method')
             .eq('user_id', user!.id)
+            .is('deleted_at', null)
             .order('name', { ascending: true }),
     ]);
 

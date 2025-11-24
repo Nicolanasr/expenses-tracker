@@ -97,12 +97,40 @@ export async function deleteBudgetAction(formData: FormData) {
 		throw error ?? new Error("You must be signed in.");
 	}
 
-	const { error: deleteError } = await supabase
+	const { data: existing, error: fetchError } = await supabase
 		.from("budgets")
-		.delete()
+		.select("*")
 		.eq("user_id", user.id)
 		.eq("category_id", parsed.data.categoryId)
-		.eq("month", parsed.data.month);
+		.eq("month", parsed.data.month)
+		.is("deleted_at", null)
+		.maybeSingle();
+
+	if (fetchError) {
+		throw fetchError;
+	}
+
+	if (existing) {
+		const deletedAt = new Date().toISOString();
+		const { error: deleteError } = await supabase
+			.from("budgets")
+			.update({ deleted_at: deletedAt, updated_at: deletedAt })
+			.eq("user_id", user.id)
+			.eq("category_id", parsed.data.categoryId)
+			.eq("month", parsed.data.month);
+
+		if (deleteError) {
+			throw deleteError;
+		}
+
+		await supabase.from("audit_log").insert({
+			user_id: user.id,
+			table_name: "budgets",
+			record_id: existing.id,
+			action: "delete",
+			snapshot: existing as unknown as Record<string, unknown>,
+		});
+	}
 
 	if (deleteError) {
 		throw deleteError;
@@ -131,14 +159,37 @@ export async function deleteMonthBudgetsAction(formData: FormData) {
 		throw error ?? new Error("You must be signed in.");
 	}
 
+	const { data: existingRows, error: fetchError } = await supabase
+		.from("budgets")
+		.select("*")
+		.eq("user_id", user.id)
+		.eq("month", parsed.data.month)
+		.is("deleted_at", null);
+
+	if (fetchError) {
+		throw fetchError;
+	}
+
+	const deletedAt = new Date().toISOString();
 	const { error: deleteError } = await supabase
 		.from("budgets")
-		.delete()
+		.update({ deleted_at: deletedAt, updated_at: deletedAt })
 		.eq("user_id", user.id)
 		.eq("month", parsed.data.month);
 
 	if (deleteError) {
 		throw deleteError;
+	}
+
+	if (existingRows && existingRows.length) {
+		const inserts = existingRows.map((row) => ({
+			user_id: user.id,
+			table_name: "budgets",
+			record_id: row.id,
+			action: "delete",
+			snapshot: row as unknown as Record<string, unknown>,
+		}));
+		await supabase.from("audit_log").insert(inserts);
 	}
 
 	revalidatePath("/budgets");

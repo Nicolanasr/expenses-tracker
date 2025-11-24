@@ -152,11 +152,39 @@ export async function deleteRecurringRuleAction(_prev: RecurringFormState, formD
 		return { ok: false, message: "Sign in to continue." };
 	}
 
-	const { error: deleteError } = await supabase.from("recurring_transactions").delete().eq("id", id).eq("user_id", user.id);
+	const { data: existing, error: fetchError } = await supabase
+		.from("recurring_transactions")
+		.select("*")
+		.eq("id", id)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
 
-	if (deleteError) {
-		console.error(deleteError);
+	if (fetchError) {
+		console.error(fetchError);
 		return { ok: false, message: "Unable to delete recurring transaction." };
+	}
+
+	if (existing) {
+		const deletedAt = new Date().toISOString();
+		const { error: deleteError } = await supabase
+			.from("recurring_transactions")
+			.update({ deleted_at: deletedAt, updated_at: deletedAt })
+			.eq("id", id)
+			.eq("user_id", user.id);
+
+		if (deleteError) {
+			console.error(deleteError);
+			return { ok: false, message: "Unable to delete recurring transaction." };
+		}
+
+		await supabase.from("audit_log").insert({
+			user_id: user.id,
+			table_name: "recurring_transactions",
+			record_id: id,
+			action: "delete",
+			snapshot: existing as unknown as Record<string, unknown>,
+		});
 	}
 
 	revalidatePath("/transactions");
@@ -186,6 +214,7 @@ export async function runRecurringRuleAction(_prev: RecurringFormState, formData
 		.select("id, name, amount, type, payment_method, notes, category_id, account_id, frequency, next_run_on")
 		.eq("id", parsed.data.id)
 		.eq("user_id", user.id)
+		.is("deleted_at", null)
 		.maybeSingle();
 
 	if (fetchError || !rule) {

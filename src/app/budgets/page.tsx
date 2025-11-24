@@ -55,10 +55,11 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
             .select("id, name")
             .eq("user_id", user.id)
             .eq("type", "expense")
+            .is("deleted_at", null)
             .order("name", { ascending: true }),
         getBudgetSummary(month),
         getCategorySpendMap(month, payCycleStartDay),
-        supabase.from("budgets").select("month, amount_cents").eq("user_id", user.id),
+        supabase.from("budgets").select("month, amount_cents").eq("user_id", user.id).is("deleted_at", null),
     ]);
 
     const categories = categoryRows ?? [];
