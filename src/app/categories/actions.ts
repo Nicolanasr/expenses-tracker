@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 
 export type FormState = {
 	ok: boolean;
@@ -152,7 +152,7 @@ export async function deleteCategory(prevState: FormState, formData: FormData): 
 			table_name: "categories",
 			record_id: payload.data.id,
 			action: "delete",
-			snapshot: existing as unknown as Record<string, unknown>,
+			snapshot: existing as unknown as Json,
 		});
 	}
 
@@ -210,7 +210,7 @@ export async function deleteCategoryById(id: string, version?: string) {
 		table_name: "categories",
 		record_id: id,
 		action: "delete",
-		snapshot: existing as unknown as Record<string, unknown>,
+		snapshot: existing as unknown as Json,
 	});
 
 	revalidatePath("/categories");
@@ -250,7 +250,7 @@ export async function restoreCategory(category: { id: string; name: string; icon
 		table_name: "categories",
 		record_id: category.id,
 		action: "restore",
-		snapshot: category as unknown as Record<string, unknown>,
+		snapshot: category as unknown as Json,
 	});
 
 	revalidatePath("/categories");

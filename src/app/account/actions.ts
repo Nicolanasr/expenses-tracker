@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { CURRENCY_LOCK_MESSAGE, settingsSchema, type SettingsFormState } from "@/app/account/_lib/settings-form";
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 
 export async function updateUserSettings(_prevState: SettingsFormState, formData: FormData): Promise<SettingsFormState> {
 	const supabase = await createSupabaseServerActionClient();
@@ -203,7 +203,7 @@ export async function deleteAccountAction(_prev: AccountFormState, formData: For
 			table_name: "accounts",
 			record_id: accountId,
 			action: "delete",
-			snapshot: existing as unknown as Record<string, unknown>,
+			snapshot: existing as unknown as Json,
 		});
 	}
 

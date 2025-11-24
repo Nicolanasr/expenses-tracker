@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 import { insertNotification, markNotificationsAsRead } from "@/lib/notifications";
 
 const recurringSchema = z.object({
@@ -183,7 +183,7 @@ export async function deleteRecurringRuleAction(_prev: RecurringFormState, formD
 			table_name: "recurring_transactions",
 			record_id: id,
 			action: "delete",
-			snapshot: existing as unknown as Record<string, unknown>,
+			snapshot: existing as unknown as Json,
 		});
 	}
 
@@ -250,7 +250,7 @@ export async function runRecurringRuleAction(_prev: RecurringFormState, formData
 
 	await insertNotification(supabase, user.id, {
 		title: `Recurring transaction logged`,
-		body: `${rule.name} logged manually for ${new Date(rule.next_run_on).toLocaleDateString('en-US')}`,
+		body: `${rule.name} logged manually for ${new Date(rule.next_run_on).toLocaleDateString("en-US")}`,
 		type: "recurring_logged",
 		referenceId: rule.id,
 		sendEmail: true,

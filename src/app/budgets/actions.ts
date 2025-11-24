@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { copyBudgets, toCents, upsertBudget } from "@/lib/budgets";
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 
 const upsertSchema = z.object({
 	categoryId: z.string().uuid(),
@@ -40,7 +40,7 @@ const bulkSaveSchema = z.object({
 		z.object({
 			categoryId: z.string().uuid(),
 			amount: z.number().min(0),
-		}),
+		})
 	),
 });
 
@@ -70,8 +70,8 @@ export async function saveBudgetsAction(form: FormData) {
 				categoryId: item.categoryId,
 				month: parsed.data.month,
 				amountCents: toCents(item.amount),
-			}),
-		),
+			})
+		)
 	);
 
 	revalidatePath("/budgets");
@@ -119,21 +119,18 @@ export async function deleteBudgetAction(formData: FormData) {
 			.eq("category_id", parsed.data.categoryId)
 			.eq("month", parsed.data.month);
 
+		if (!deleteError) {
+			await supabase.from("audit_log").insert({
+				user_id: user.id,
+				table_name: "budgets",
+				record_id: existing.id,
+				action: "delete",
+				snapshot: existing as unknown as Json,
+			});
+		}
 		if (deleteError) {
 			throw deleteError;
 		}
-
-		await supabase.from("audit_log").insert({
-			user_id: user.id,
-			table_name: "budgets",
-			record_id: existing.id,
-			action: "delete",
-			snapshot: existing as unknown as Record<string, unknown>,
-		});
-	}
-
-	if (deleteError) {
-		throw deleteError;
 	}
 
 	revalidatePath("/budgets");
@@ -186,8 +183,8 @@ export async function deleteMonthBudgetsAction(formData: FormData) {
 			user_id: user.id,
 			table_name: "budgets",
 			record_id: row.id,
-			action: "delete",
-			snapshot: row as unknown as Record<string, unknown>,
+			action: "delete" as const,
+			snapshot: row as unknown as Json,
 		}));
 		await supabase.from("audit_log").insert(inserts);
 	}

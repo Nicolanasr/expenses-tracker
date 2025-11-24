@@ -16,7 +16,7 @@ export type Database = {
 					institution: string | null;
 					color: string | null;
 					starting_balance: number;
-				default_payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					default_payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at: string;
 					updated_at: string;
 					deleted_at: string | null;
@@ -29,7 +29,7 @@ export type Database = {
 					institution?: string | null;
 					color?: string | null;
 					starting_balance?: number;
-				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
 					deleted_at?: string | null;
@@ -42,7 +42,7 @@ export type Database = {
 					institution?: string | null;
 					color?: string | null;
 					starting_balance?: number;
-				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
 					deleted_at?: string | null;
@@ -160,7 +160,7 @@ export type Database = {
 					payee: string | null;
 					notes: string | null;
 					occurred_on: string;
-				payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
 					updated_at: string;
@@ -177,7 +177,7 @@ export type Database = {
 					payee?: string | null;
 					notes?: string | null;
 					occurred_on: string;
-				payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type: "income" | "expense";
 					user_id: string;
 					updated_at?: string;
@@ -194,7 +194,7 @@ export type Database = {
 					payee?: string | null;
 					notes?: string | null;
 					occurred_on?: string;
-				payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
 					type?: "income" | "expense";
 					user_id?: string;
 					updated_at?: string;

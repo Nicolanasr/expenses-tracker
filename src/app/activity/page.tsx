@@ -1,6 +1,6 @@
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { OfflineFallback } from '@/app/_components/offline-fallback';
-import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
+import { createSupabaseServerComponentClient, type Json } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,7 @@ type AuditRow = {
     record_id: string;
     action: string;
     created_at: string;
-    snapshot: Record<string, unknown> | null;
+    snapshot: Json | null;
 };
 
 function formatDate(value: string) {
@@ -44,7 +44,7 @@ export default async function ActivityPage() {
         return <OfflineFallback />;
     }
 
-    const items: AuditRow[] = rows ?? [];
+    const items: AuditRow[] = (rows ?? []) as AuditRow[];
 
     return (
         <div className="min-h-screen bg-slate-50">
