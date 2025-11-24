@@ -20,8 +20,14 @@ jobs:
           fi
           FUNCTION_URL="https://${SUPABASE_PROJECT_REF}.functions.supabase.co/recurring-run"
           echo "Calling $FUNCTION_URL"
-          curl -sS -X POST "$FUNCTION_URL" \
+          resp=$(curl -sS -X POST "$FUNCTION_URL" \
             -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
             -d '{}' \
-            -w "\nHTTP %{http_code}\n"
+            -w "\nHTTP_CODE:%{http_code}")
+          echo "$resp"
+          status=$(echo "$resp" | tr ' ' '\n' | grep HTTP_CODE | cut -d: -f2)
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Ping failed with status $status"
+            exit 1
+          fi
