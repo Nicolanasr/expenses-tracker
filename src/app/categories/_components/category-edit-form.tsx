@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useCallback } from 'react';
+import { useActionState, useEffect, useCallback, startTransition } from 'react';
 import toast from 'react-hot-toast';
 
 import { type FormState, updateCategory } from '@/app/categories/actions';
@@ -44,7 +44,9 @@ export default function CategoryEditForm({ category, onCancel }: Props) {
         onCancel();
         return;
       }
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     },
     [formAction, onCancel],
   );

@@ -57,6 +57,7 @@ const NAV_ITEMS = [
 	{ href: '/transfers', label: 'Transfers' },
 	{ href: '/categories', label: 'Categories' },
 	{ href: '/budgets', label: 'Budgets' },
+	{ href: '/activity', label: 'Activity' },
 ];
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {

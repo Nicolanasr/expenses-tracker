@@ -268,6 +268,9 @@ begin
   end if;
 
   action := lower(tg_op);
+  if action = 'insert' then
+    action := 'create';
+  end if;
   actor := coalesce(auth.uid(), (case when tg_op = 'DELETE' then old.user_id else new.user_id end));
 
   insert into public.audit_log (user_id, table_name, record_id, action, snapshot, created_at)

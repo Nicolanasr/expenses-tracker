@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useCallback } from 'react';
+import { useActionState, useEffect, useRef, useCallback, startTransition } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
 
@@ -65,7 +65,9 @@ export function CreateCategoryForm() {
         event.currentTarget.reset();
         return;
       }
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     },
     [formAction],
   );
