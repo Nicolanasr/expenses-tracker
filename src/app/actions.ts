@@ -70,6 +70,12 @@ const transactionSchema = z.object({
 		.optional()
 		.or(z.literal(""))
 		.transform((val) => (val ? val : undefined)),
+	recurring_enabled: z
+		.preprocess((val) => (val === null ? undefined : val), z.enum(["on", "off"]).optional()),
+	recurring_frequency: z
+		.preprocess((val) => (val === null ? undefined : val), z.enum(["daily", "weekly", "monthly", "yearly"]).optional()),
+	recurring_first_run_on: z.preprocess((val) => (val === null ? undefined : val), z.string().optional()),
+	recurring_auto_log: z.enum(["on", "off"]).optional(),
 });
 
 const transactionUpdateSchema = transactionSchema.extend({
@@ -175,6 +181,9 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		notes: formData.get("notes"),
 		account_id: formData.get("account_id"),
 		payee: formData.get("payee"),
+		recurring_enabled: formData.get("recurring_enabled"),
+		recurring_frequency: formData.get("recurring_frequency"),
+		recurring_first_run_on: formData.get("recurring_first_run_on"),
 	});
 
 	if (!payload.success) {
@@ -207,25 +216,76 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		accountId = payload.data.account_id;
 	}
 
-	const { error } = await supabase.from("transactions").insert({
-		amount: payload.data.amount,
-		occurred_on: payload.data.occurred_on,
-		payment_method: payload.data.payment_method,
-		notes: payload.data.notes ?? null,
-		account_id: accountId ?? null,
-		payee: payload.data.payee ?? null,
-		category_id: payload.data.category_id,
-		type: category.type,
-		user_id: user.id,
-		currency_code: currencyCode,
-	});
-
-	if (error) {
-		console.error(error);
+	const isRecurring = payload.data.recurring_enabled === "on";
+	if (isRecurring && !payload.data.recurring_first_run_on) {
 		return {
 			ok: false,
-			errors: { amount: ["Unable to record transaction, try again."] },
+			errors: { recurring_first_run_on: ["Pick the next run date for the recurring schedule."] },
 		};
+	}
+
+	const firstRun = payload.data.recurring_first_run_on || payload.data.occurred_on;
+	const shouldDelayFirstRun = isRecurring && firstRun > payload.data.occurred_on;
+	let insertedTransactionId: string | null = null;
+
+	if (!shouldDelayFirstRun) {
+		const { data: insertedTransaction, error } = await supabase
+			.from("transactions")
+			.insert({
+				amount: payload.data.amount,
+				occurred_on: payload.data.occurred_on,
+				payment_method: payload.data.payment_method,
+				notes: payload.data.notes ?? null,
+				account_id: accountId ?? null,
+				payee: payload.data.payee ?? null,
+				category_id: payload.data.category_id,
+				type: category.type,
+				user_id: user.id,
+				currency_code: currencyCode,
+			})
+			.select("id")
+			.single();
+
+		if (error) {
+			console.error(error);
+			return {
+				ok: false,
+				errors: { amount: ["Unable to record transaction, try again."] },
+			};
+		}
+
+		insertedTransactionId = insertedTransaction?.id ?? null;
+	}
+
+	if (isRecurring) {
+		const nextRun = firstRun;
+		const frequency = payload.data.recurring_frequency || "monthly";
+	const autoLog = payload.data.recurring_auto_log !== "off";
+		const ruleName = payload.data.payee || (category?.name as string) || "Recurring transaction";
+		const { data: insertedRule } = await supabase
+			.from("recurring_transactions")
+			.insert({
+			user_id: user.id,
+			name: ruleName,
+			amount: payload.data.amount,
+			type: category.type,
+			category_id: payload.data.category_id,
+			account_id: accountId ?? null,
+			payment_method: payload.data.payment_method,
+			notes: payload.data.notes ?? null,
+			auto_log: autoLog,
+			frequency,
+			next_run_on: nextRun,
+		})
+		.select("id")
+		.single();
+		if (insertedTransactionId && insertedRule?.id) {
+			await supabase
+				.from("transactions")
+				.update({ recurring_transaction_id: insertedRule.id })
+				.eq("id", insertedTransactionId)
+				.eq("user_id", user.id);
+		}
 	}
 
 	revalidatePath("/");

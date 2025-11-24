@@ -42,6 +42,7 @@ create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   category_id uuid references public.categories (id) on delete set null,
   account_id uuid references public.accounts (id) on delete set null,
+  recurring_transaction_id uuid references public.recurring_transactions (id) on delete set null,
   amount numeric(12, 2) not null check (amount > 0),
   type text not null check (type in ('income', 'expense')),
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -91,6 +92,40 @@ create index if not exists transactions_user_month_category_idx
   on public.transactions (user_id, occurred_on, category_id)
   where type = 'expense';
 
+-- Recurring transaction schedules.
+create table if not exists public.recurring_transactions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  name text not null,
+  amount numeric(12, 2) not null check (amount > 0),
+  type text not null check (type in ('income', 'expense')),
+  category_id uuid references public.categories (id) on delete set null,
+  account_id uuid references public.accounts (id) on delete set null,
+  payment_method text not null check (
+    payment_method in ('cash', 'card', 'transfer', 'bank_transfer', 'account_transfer', 'other')
+  ),
+  notes text,
+  auto_log boolean not null default true,
+  frequency text not null check (frequency in ('daily', 'weekly', 'monthly', 'yearly')),
+  next_run_on date not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Notifications table to store reminder/logged events
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  title text not null,
+  body text,
+  type text not null check (type in ('recurring_due', 'recurring_logged', 'budget_threshold')),
+  status text not null default 'unread' check (status in ('unread', 'read')),
+  reference_id uuid references public.recurring_transactions (id) on delete set null,
+  metadata jsonb,
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+
 -- Optional helper view to make monthly reporting easier per user.
 create or replace view public.monthly_totals as
 select
@@ -106,6 +141,8 @@ alter table public.categories enable row level security;
 alter table public.transactions enable row level security;
 alter table public.user_settings enable row level security;
 alter table public.budgets enable row level security;
+alter table public.recurring_transactions enable row level security;
+alter table public.notifications enable row level security;
 
 create policy if not exists "Users can view their categories"
   on public.categories for select
@@ -171,6 +208,14 @@ begin
   create policy budgets_insert on public.budgets for insert with check (auth.uid() = user_id);
   create policy budgets_update on public.budgets for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
   create policy budgets_delete on public.budgets for delete using (auth.uid() = user_id);
+  create policy recurring_transactions_select on public.recurring_transactions for select using (auth.uid() = user_id);
+  create policy recurring_transactions_insert on public.recurring_transactions for insert with check (auth.uid() = user_id);
+  create policy recurring_transactions_update on public.recurring_transactions for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  create policy recurring_transactions_delete on public.recurring_transactions for delete using (auth.uid() = user_id);
+  create policy notifications_select on public.notifications for select using (auth.uid() = user_id);
+  create policy notifications_insert on public.notifications for insert with check (auth.uid() = user_id);
+  create policy notifications_update on public.notifications for update using (auth.uid() = user_id);
+  create policy notifications_delete on public.notifications for delete using (auth.uid() = user_id);
 exception
   when duplicate_object then
     null;

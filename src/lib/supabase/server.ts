@@ -142,6 +142,7 @@ export type Database = {
 				Row: {
 					amount: number;
 					account_id: string | null;
+					recurring_transaction_id: string | null;
 					category_id: string | null;
 					created_at: string;
 					currency_code: string;
@@ -157,6 +158,7 @@ export type Database = {
 				Insert: {
 					amount: number;
 					account_id?: string | null;
+					recurring_transaction_id?: string | null;
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
@@ -172,6 +174,7 @@ export type Database = {
 				Update: {
 					amount?: number;
 					account_id?: string | null;
+					recurring_transaction_id?: string | null;
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
@@ -202,6 +205,128 @@ export type Database = {
 						columns: ["user_id"];
 						isOneToOne?: true;
 						referencedRelation: "users";
+						referencedColumns: ["id"];
+					}
+				];
+			};
+			recurring_transactions: {
+				Row: {
+					id: string;
+					user_id: string;
+					name: string;
+					amount: number;
+					type: "income" | "expense";
+					category_id: string | null;
+					account_id: string | null;
+					payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					notes: string | null;
+					auto_log: boolean;
+					frequency: "daily" | "weekly" | "monthly" | "yearly";
+					next_run_on: string;
+					created_at: string;
+					updated_at: string;
+				};
+				Insert: {
+					id?: string;
+					user_id: string;
+					name: string;
+					amount: number;
+					type: "income" | "expense";
+					category_id?: string | null;
+					account_id?: string | null;
+					payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					notes?: string | null;
+					auto_log?: boolean;
+					frequency: "daily" | "weekly" | "monthly" | "yearly";
+					next_run_on: string;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Update: {
+					id?: string;
+					user_id?: string;
+					name?: string;
+					amount?: number;
+					type?: "income" | "expense";
+					category_id?: string | null;
+					account_id?: string | null;
+					payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other";
+					notes?: string | null;
+					auto_log?: boolean;
+					frequency?: "daily" | "weekly" | "monthly" | "yearly";
+					next_run_on?: string;
+					created_at?: string;
+					updated_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "recurring_transactions_account_id_fkey";
+						columns: ["account_id"];
+						referencedRelation: "accounts";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "recurring_transactions_category_id_fkey";
+						columns: ["category_id"];
+						referencedRelation: "categories";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "recurring_transactions_user_id_fkey";
+						columns: ["user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					}
+				];
+			};
+			notifications: {
+				Row: {
+					id: string;
+					user_id: string;
+					title: string;
+					body: string | null;
+					type: "recurring_due" | "recurring_logged" | "budget_threshold";
+					status: "unread" | "read";
+					reference_id: string | null;
+					metadata: Json | null;
+					created_at: string;
+					read_at: string | null;
+				};
+				Insert: {
+					id?: string;
+					user_id: string;
+					title: string;
+					body?: string | null;
+					type: "recurring_due" | "recurring_logged" | "budget_threshold";
+					status?: "unread" | "read";
+					reference_id?: string | null;
+					metadata?: Json | null;
+					created_at?: string;
+					read_at?: string | null;
+				};
+				Update: {
+					id?: string;
+					user_id?: string;
+					title?: string;
+					body?: string | null;
+					type?: "recurring_due" | "recurring_logged" | "budget_threshold";
+					status?: "unread" | "read";
+					reference_id?: string | null;
+					metadata?: Json | null;
+					created_at?: string;
+					read_at?: string | null;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "notifications_user_id_fkey";
+						columns: ["user_id"];
+						referencedRelation: "users";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "notifications_reference_id_fkey";
+						columns: ["reference_id"];
+						referencedRelation: "recurring_transactions";
 						referencedColumns: ["id"];
 					}
 				];

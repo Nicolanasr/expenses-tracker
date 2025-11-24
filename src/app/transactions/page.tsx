@@ -8,6 +8,8 @@ import { fetchTransactionsPage } from '@/lib/transactions/pagination';
 import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
 import { TransactionsExportButton } from '@/app/transactions/_components/transactions-export-button';
+import { RecurringTransactionsPanel } from '@/app/transactions/_components/recurring-transactions-panel';
+import { processRecurringSchedules } from '@/lib/transactions/recurring';
 import { OfflineFallback } from '../_components/offline-fallback';
 
 export const dynamic = 'force-dynamic';
@@ -100,6 +102,7 @@ export default async function TransactionsPage({
 }) {
     const supabase = await createSupabaseServerComponentClient();
     let userId: string | null = null;
+    let userEmail: string | null = null;
     let userError: Error | null = null;
     try {
         const {
@@ -107,6 +110,7 @@ export default async function TransactionsPage({
             error,
         } = await supabase.auth.getUser();
         userId = user?.id ?? null;
+        userEmail = user?.email ?? null;
         userError = (error as Error) ?? null;
     } catch (error) {
         userId = null;
@@ -275,6 +279,19 @@ export default async function TransactionsPage({
         });
     }
 
+    const reminders = await processRecurringSchedules(supabase, userId!, currencyCode, userEmail);
+    const { data: recurringRows, error: recurringError } = await supabase
+        .from('recurring_transactions')
+        .select(
+            'id, name, amount, type, payment_method, notes, auto_log, frequency, next_run_on, categories (id, name), accounts (id, name)',
+        )
+        .eq('user_id', userId!)
+        .order('name', { ascending: true });
+    if (recurringError) {
+        throw recurringError;
+    }
+    const dueIds = new Set((reminders ?? []).map((rule) => rule.id));
+
     const normalizedTransactions = (paginated?.rows ?? []).map((transaction) => ({
         id: transaction.id,
         amount: Number(transaction.amount ?? 0),
@@ -306,7 +323,23 @@ export default async function TransactionsPage({
             }
             : null,
     }));
+
+    const recurringRules = (recurringRows ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        amount: Number(row.amount ?? 0),
+        type: row.type as 'income' | 'expense',
+        paymentMethod: row.payment_method,
+        notes: row.notes ?? null,
+        autoLog: row.auto_log ?? true,
+        frequency: row.frequency as 'daily' | 'weekly' | 'monthly' | 'yearly',
+        nextRunOn: row.next_run_on,
+        categoryName: row.categories?.name ?? null,
+        accountName: row.accounts?.name ?? null,
+        isDue: dueIds.has(row.id) || (!row.auto_log && row.next_run_on <= new Date().toISOString().slice(0, 10)),
+    }));
     const payees = Array.from(new Set(normalizedTransactions.map((transaction) => transaction.payee).filter((name): name is string => Boolean(name))));
+
 
     const categoryOptions = (categories ?? []).map((category) => ({
         id: category.id,
@@ -346,6 +379,10 @@ export default async function TransactionsPage({
             <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
                 <section>
                     <CreateTransactionForm categories={categories ?? []} accounts={accountOptions} payees={payees} />
+                </section>
+
+                <section>
+                    <RecurringTransactionsPanel rules={recurringRules} currencyCode={currencyCode} />
                 </section>
 
                 {/* <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

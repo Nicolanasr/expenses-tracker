@@ -10,6 +10,7 @@ import { LandingPage } from '@/app/_components/landing-page';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
 import { getTopBudgetUsage } from '@/lib/budgets';
+import { insertNotification } from '@/lib/notifications';
 import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 
 export const dynamic = 'force-dynamic';
@@ -95,6 +96,19 @@ type SavedFilter = {
 };
 
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
+
+const BUDGET_THRESHOLD_LEVELS = [
+    { value: 50, label: '50%' },
+    { value: 75, label: '75%' },
+    { value: 90, label: '90%' },
+    { value: 100, label: '100%' },
+] as const;
+
+type BudgetThresholdMetadata = {
+    categoryId: string;
+    level: number;
+    month: string;
+};
 
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (ALL_PAYMENT_METHODS as readonly string[]).includes(value);
@@ -335,6 +349,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     if (userError) {
         return <OfflineFallback />;
     }
+    const userEmail = user.email ?? null;
 
     const resolvedSearchParams = (await searchParams) ?? {};
 
@@ -412,6 +427,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     }
 
     const categories = (categoryRows ?? []) as CategoryRow[];
+    const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
     let accounts = (accountRows ?? []) as AccountRow[];
     if (accounts.length === 0) {
         const { data: insertedAccount, error: insertAccountError } = await supabase
@@ -573,6 +589,60 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const categoryBreakdown = computeCategoryBreakdown(reportTransactions);
 
     const budgetUsage = await getTopBudgetUsage(defaultCycleKey, 50);
+    const budgetCycleLabel = formatMonthLabel(defaultCycleRange.startDate);
+    if (user?.id) {
+        let triggeredBudgetKeys = new Set<string>();
+        const { data: existingBudgetNotifications, error: existingBudgetNotificationsError } = await supabase
+            .from('notifications')
+            .select('metadata')
+            .eq('user_id', user.id)
+            .eq('type', 'budget_threshold')
+            .eq('metadata->>month', defaultCycleKey);
+
+        if (existingBudgetNotificationsError) {
+            console.error('[budget-alerts] unable to read notifications', existingBudgetNotificationsError);
+        } else {
+            triggeredBudgetKeys = new Set(
+                (existingBudgetNotifications ?? [])
+                    .map((notification) => {
+                        const metadata = notification.metadata as BudgetThresholdMetadata | null;
+                        if (!metadata?.categoryId || typeof metadata.level !== 'number' || !metadata.month) {
+                            return null;
+                        }
+                        return `${metadata.categoryId}:${metadata.level}:${metadata.month}`;
+                    })
+                    .filter((value): value is string => Boolean(value)),
+            );
+        }
+
+        for (const budget of budgetUsage) {
+            const categoryId = budget.category_id;
+            if (!categoryId) {
+                continue;
+            }
+            const pct = Math.round(budget.used_pct ?? 0);
+            const categoryName = categoryNameById.get(categoryId) ?? 'This category';
+
+            for (const threshold of BUDGET_THRESHOLD_LEVELS) {
+                const key = `${categoryId}:${threshold.value}:${defaultCycleKey}`;
+                    if (pct >= threshold.value && !triggeredBudgetKeys.has(key)) {
+                        await insertNotification(supabase, user.id, {
+                            title: `${categoryName} budget ${threshold.label} reached`,
+                            body: `${categoryName} has used ${pct}% of its ${budgetCycleLabel} budget.`,
+                        sendEmail: true,
+                        userEmail,
+                            type: 'budget_threshold',
+                            metadata: {
+                                categoryId,
+                                level: threshold.value,
+                                month: defaultCycleKey,
+                        },
+                    });
+                    triggeredBudgetKeys.add(key);
+                }
+            }
+        }
+    }
     const topBudgetDisplay = budgetUsage.slice(0, 3);
     const remainingBudgets = budgetUsage.slice(3);
 

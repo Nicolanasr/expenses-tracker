@@ -59,6 +59,11 @@ type Props = {
 };
 
 export function CreateTransactionForm({ categories, accounts, payees = [] }: Props) {
+    const defaultDate = useMemo(() => {
+        const now = new Date();
+        return now.toISOString().slice(0, 10);
+    }, []);
+
     const formRef = useRef<HTMLFormElement>(null);
     const [state, formAction] = useActionState(
         createTransaction,
@@ -67,6 +72,10 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
     const [activeType, setActiveType] = useState<'income' | 'expense'>('expense');
     const [selectedCategory, setSelectedCategory] = useState<string>('');
     const [paymentMethod, setPaymentMethod] = useState<SelectablePaymentMethod>('card');
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [recurringFrequency, setRecurringFrequency] = useState<'monthly' | 'weekly' | 'daily' | 'yearly'>('monthly');
+    const [recurringStartDate, setRecurringStartDate] = useState(defaultDate);
+    const [recurringAutoLog, setRecurringAutoLog] = useState(true);
     const defaultAccountId = accounts[0]?.id ?? '';
     const [selectedAccountId, setSelectedAccountId] = useState(defaultAccountId);
     const [accountManuallySelected, setAccountManuallySelected] = useState(false);
@@ -95,16 +104,16 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
             setSelectedAccountId('');
             setAccountManuallySelected(false);
             setPayeeValue('');
+            setIsRecurring(false);
+            setRecurringFrequency('monthly');
+            setRecurringStartDate(defaultDate);
+            setRecurringAutoLog(true);
             toast.success('Transaction recorded');
         }, 0);
 
         return () => window.clearTimeout(timeout);
-    }, [state, categories, defaultAccountId]);
+    }, [state, categories, defaultAccountId, defaultDate]);
 
-    const defaultDate = useMemo(() => {
-        const now = new Date();
-        return now.toISOString().slice(0, 10);
-    }, []);
 
 
 
@@ -175,13 +184,17 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                 setPaymentMethod('card');
                 setSelectedAccountId('');
                 setAccountManuallySelected(false);
+                setIsRecurring(false);
+                setRecurringFrequency('monthly');
+                setRecurringStartDate(defaultDate);
+                setRecurringAutoLog(true);
                 return;
             }
             startTransition(() => {
                 formAction(formData);
             });
         },
-        [formAction, validateClient],
+        [formAction, validateClient, defaultDate],
     );
 
     useEffect(() => {
@@ -417,20 +430,20 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                         return (
                             <label
                                 key={value}
-                                    className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 data-[active=true]:border-indigo-500 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-600"
-                                    data-active={isSelected}
-                                >
-                                    <input
-                                        type="radio"
-                                        name="payment_method"
-                                        value={value}
-                                        className="sr-only"
-                                        checked={isSelected}
-                                        onChange={() => {
-                                            setPaymentMethod(value);
-                                            setAccountManuallySelected(false);
-                                        }}
-                                    />
+                                className="cursor-pointer rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-indigo-300 hover:text-indigo-600 data-[active=true]:border-indigo-500 data-[active=true]:bg-indigo-50 data-[active=true]:text-indigo-600"
+                                data-active={isSelected}
+                            >
+                                <input
+                                    type="radio"
+                                    name="payment_method"
+                                    value={value}
+                                    className="sr-only"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                        setPaymentMethod(value);
+                                        setAccountManuallySelected(false);
+                                    }}
+                                />
                                 {label}
                             </label>
                         );
@@ -506,6 +519,62 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                     <p className="text-xs text-red-500">{state.errors.notes[0]}</p>
                 ) : null}
             </div>
+
+            <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <input
+                    type="checkbox"
+                    name="recurring_enabled"
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={isRecurring}
+                    onChange={(event) => setIsRecurring(event.target.checked)}
+                />
+                Make this a recurring transaction
+            </label>
+
+            {isRecurring ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1">
+                        <label className="text-sm font-semibold text-slate-800">Next run date</label>
+                        <input
+                            type="date"
+                            name="recurring_first_run_on"
+                            value={recurringStartDate}
+                            onChange={(event) => setRecurringStartDate(event.target.value)}
+                            className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                        />
+                    </div>
+                    <div className="grid gap-1">
+                        <label className="text-sm font-semibold text-slate-800">Frequency</label>
+                        <select
+                            name="recurring_frequency"
+                            value={recurringFrequency}
+                            onChange={(event) =>
+                                setRecurringFrequency(
+                                    event.target.value as 'monthly' | 'weekly' | 'daily' | 'yearly',
+                                )
+                            }
+                            className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                        >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                        <input type="hidden" name="recurring_auto_log" value={recurringAutoLog ? 'on' : 'off'} />
+                        <label className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                            <input
+                                type="checkbox"
+                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                checked={recurringAutoLog}
+                                onChange={(event) => setRecurringAutoLog(event.target.checked)}
+                            />
+                            Auto-log this entry on the due date
+                        </label>
+                    </div>
+                </div>
+            ) : null}
 
             {state.ok ? (
                 <p className="text-xs font-medium text-emerald-600">
