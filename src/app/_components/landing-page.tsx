@@ -11,8 +11,6 @@ import {
     HiOutlineBuildingStorefront,
     HiOutlineGlobeAsiaAustralia,
     HiOutlineHomeModern,
-    HiOutlineMoon,
-    HiOutlineSun,
     HiOutlineUsers,
     HiOutlineWallet,
 } from "react-icons/hi2";
@@ -21,6 +19,7 @@ import "swiper/css";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import "yet-another-react-lightbox/styles.css";
+import { MarketingHeader } from "./marketing-header";
 
 const FEATURE_LIST = [
     {
@@ -149,14 +148,6 @@ const TESTIMONIALS = [
     },
 ];
 
-const NAV_LINKS = [
-    { label: "Features", href: "#features" },
-    { label: "Budgets", href: "#budgets" },
-    { label: "Walkthrough", href: "#walkthrough" },
-    { label: "Personas", href: "#personas" },
-    { label: "Pricing", href: "#pricing" },
-    { label: "FAQ", href: "#faq" },
-];
 
 const PRICING_FEATURES = [
     "Offline queue + undo",
@@ -253,10 +244,33 @@ const SCREENSHOTS = [
 ];
 
 export function LandingPage() {
+    const [blogPosts, setBlogPosts] = useState<
+        { slug: string; title: string; excerpt: string; date: string; readingTime: string; tags: string[] }[]
+    >([]);
     const [theme, setTheme] = useState<"light" | "dark">("light");
     const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
     const [billingPeriod, setBillingPeriod] = useState<"monthly" | "annual">("monthly");
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+        if (typeof document === "undefined") return;
+        const tmpTheme: "light" | "dark" = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setTheme(tmpTheme);
+    }, []);
+
+    useEffect(() => {
+        const fetchPosts = async () => {
+            try {
+                const res = await fetch("/api/blog", { cache: "no-store" });
+                if (!res.ok) return;
+                const payload = await res.json();
+                setBlogPosts(payload.posts ?? []);
+            } catch (error) {
+                console.error("[blog] unable to load posts", error);
+            }
+        };
+        fetchPosts();
+    }, []);
 
     useEffect(() => {
         if (typeof document === "undefined") return;
@@ -307,85 +321,7 @@ export function LandingPage() {
 
     return (
         <div className={`space-y-16 pb-20 transition-colors duration-500 ${rootClass}`}>
-            <header className="mb-0 sticky top-0 z-50 border-b border-slate-200 bg-white/95 text-slate-900 backdrop-blur supports-backdrop-filter:bg-white/80 dark:border-white/10 dark:bg-slate-950/80 dark:text-white">
-                <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 text-sm lg:px-10">
-                    <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
-                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-600 dark:bg-white dark:text-white ">
-                            <Image src="/expenseo-logo-removebg-preview.png" height={35} width={35} alt="expenseo logo" />
-                        </span>
-                        Expenseo
-                    </Link>
-                    <nav className="hidden items-center gap-6 text-slate-600 dark:text-slate-300 lg:flex">
-                        {NAV_LINKS.map((link) => (
-                            <a key={link.href} href={link.href} className="hover:text-indigo-600 dark:hover:text-white">
-                                {link.label}
-                            </a>
-                        ))}
-                    </nav>
-                    <div className="flex items-center gap-3 lg:flex">
-                        <button
-                            type="button"
-                            onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-                            className="hidden items-center justify-center rounded-full border border-slate-200 p-2 text-slate-600 hover:bg-slate-100 dark:border-white/20 dark:text-white dark:hover:bg-white/10 lg:inline-flex"
-                            aria-label={theme === "light" ? "Enable dark mode" : "Enable light mode"}
-                        >
-                            {theme === "light" ? <HiOutlineMoon className="h-4 w-4" /> : <HiOutlineSun className="h-4 w-4" />}
-                        </button>
-                        <Link href="/auth/sign-in" className="hidden rounded-full border border-slate-200 px-4 py-2 text-slate-600 hover:bg-slate-100 dark:border-white/20 dark:text-white dark:hover:bg-white/10 lg:inline-flex">
-                            Sign in
-                        </Link>
-                        <Link href="/auth/sign-up" className="hidden rounded-full bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-500 lg:inline-flex">
-                            Get started
-                        </Link>
-                        <button
-                            type="button"
-                            onClick={() => setMobileMenuOpen((prev) => !prev)}
-                            className="inline-flex items-center rounded-full border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:border-white/20 dark:text-white dark:hover:bg-white/10 lg:hidden"
-                        >
-                            {mobileMenuOpen ? "Close" : "Menu"}
-                        </button>
-                    </div>
-                </div>
-                {mobileMenuOpen && (
-                    <div className="border-t border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-lg dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 lg:hidden">
-                        <div className="flex flex-col gap-4">
-                            {NAV_LINKS.map((link) => (
-                                <a
-                                    key={link.href}
-                                    href={link.href}
-                                    onClick={() => setMobileMenuOpen(false)}
-                                    className="font-semibold hover:text-indigo-600 dark:hover:text-white"
-                                >
-                                    {link.label}
-                                </a>
-                            ))}
-                            <hr className="border-slate-200 dark:border-white/10" />
-                            <button
-                                type="button"
-                                onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-                                className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-white/20 dark:text-white dark:hover:bg-white/10"
-                            >
-                                {theme === "light" ? (
-                                    <>
-                                        <HiOutlineMoon className="h-4 w-4" /> Enable dark mode
-                                    </>
-                                ) : (
-                                    <>
-                                        <HiOutlineSun className="h-4 w-4" /> Enable light mode
-                                    </>
-                                )}
-                            </button>
-                            <Link href="/auth/sign-in" className="rounded-full border border-slate-200 px-4 py-2 text-center text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:border-white/20 dark:text-white dark:hover:bg-white/10">
-                                Sign in
-                            </Link>
-                            <Link href="/auth/sign-up" className="rounded-full bg-indigo-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-indigo-500">
-                                Get started
-                            </Link>
-                        </div>
-                    </div>
-                )}
-            </header>
-
+            <MarketingHeader />
 
             <section id="hero" className="relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-300/30 via-transparent to-emerald-300/30 dark:from-indigo-700/40 dark:via-transparent dark:to-emerald-500/40" />
@@ -715,6 +651,54 @@ export function LandingPage() {
                 </div>
             </section>
 
+            <section id="blog" className="mx-auto max-w-6xl rounded-4xl border border-slate-200 bg-white/80 px-6 py-10 shadow-lg lg:px-10 dark:border-white/10 dark:bg-white/5">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.3em] text-indigo-400">Blog</p>
+                        <h2 className="text-3xl font-semibold">Latest from the team</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-200">Offline-first builds, recurring automation, and smarter budgeting.</p>
+                    </div>
+                    <Link href="/blog" className="text-sm font-semibold text-indigo-600 hover:text-indigo-500">
+                        See all posts
+                    </Link>
+                </div>
+                <div className="mt-6 grid gap-4 md:grid-cols-3">
+                    {blogPosts.slice(0, 3).map((post) => (
+                        <Link
+                            key={post.slug}
+                            href={`/blog/${post.slug}`}
+                            className="group flex flex-col gap-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-white/10 dark:bg-white/5"
+                        >
+                            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-300">
+                                <span>
+                                    {new Date(post.date).toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        year: "numeric",
+                                    })}
+                                </span>
+                                <span>•</span>
+                                <span>{post.readingTime}</span>
+                            </div>
+                            <h3 className="text-base font-semibold text-slate-900 transition group-hover:text-indigo-600 dark:text-white">
+                                {post.title}
+                            </h3>
+                            <p className="text-sm text-slate-600 line-clamp-3 dark:text-slate-200">{post.excerpt}</p>
+                            <div className="mt-auto flex flex-wrap gap-2">
+                                {post.tags.slice(0, 2).map((tag) => (
+                                    <span
+                                        key={tag}
+                                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-100"
+                                    >
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+            </section>
+
             <section id="faq" className="mx-auto max-w-6xl px-6 lg:px-10">
                 <div className="space-y-2 text-center">
                     <p className="text-xs uppercase tracking-[0.3em] text-indigo-400">FAQ</p>
@@ -735,7 +719,7 @@ export function LandingPage() {
                 <h2 className="mt-3 text-3xl font-semibold">Get roadmap drops + invites.</h2>
                 <p className="mt-2 text-sm text-slate-600 dark:text-slate-200">One email per month with new launches, walkthroughs, and beta openings. No spam.</p>
                 <form className="mt-6 flex flex-col gap-3 sm:flex-row">
-                    <input type="email" required placeholder="you@example.com" className="h-12 flex-1 rounded-full border border-slate-200 px-4 text-sm focus:border-indigo-500 dark:border-white/20 dark:bg-transparent dark:text-white" />
+                    <input type="email" required placeholder="you@expenseo.online" className="h-12 flex-1 rounded-full border border-slate-200 px-4 text-sm focus:border-indigo-500 dark:border-white/20 dark:bg-transparent dark:text-white" />
                     <button className="rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-500">Join waitlist</button>
                 </form>
             </section>

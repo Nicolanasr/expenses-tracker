@@ -29,3 +29,55 @@ body {
 	color: var(--foreground);
 	font-family: Arial, Helvetica, sans-serif;
 }
+
+.blog-content {
+	max-width: 70ch;
+	color: #0f172a;
+	line-height: 1.7;
+	font-size: 16px;
+	display: grid;
+	gap: 1rem;
+}
+.blog-content h1,
+.blog-content h2,
+.blog-content h3,
+.blog-content h4 {
+	font-weight: 700;
+	color: #0f172a;
+	margin: 0;
+}
+
+.blog-content h2 {
+	font-size: 1.5em;
+}
+
+.blog-content h3 {
+	font-size: 1.1em;
+}
+.blog-content p {
+	margin: 0;
+}
+.blog-content ul,
+.blog-content ol {
+	margin: 0 0 0 1.25rem;
+	padding: 0;
+	display: grid;
+	gap: 0.35rem;
+	list-style: disc;
+}
+.blog-content ol {
+	list-style: decimal;
+}
+.blog-content strong {
+	font-weight: 700;
+}
+.blog-content blockquote {
+	border-left: 3px solid #cbd5e1;
+	padding-left: 1rem;
+	color: #334155;
+	margin: 0;
+}
+.blog-content img {
+	max-width: 100%;
+	border-radius: 0.75rem;
+}
