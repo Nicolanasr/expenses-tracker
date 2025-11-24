@@ -1,0 +1,27 @@
+name: Ping recurring-run (every 6h)
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call recurring-run Edge Function
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_PROJECT_REF" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Missing SUPABASE_PROJECT_REF or SUPABASE_SERVICE_ROLE_KEY secrets"
+            exit 1
+          fi
+          FUNCTION_URL="https://${SUPABASE_PROJECT_REF}.functions.supabase.co/recurring-run"
+          echo "Calling $FUNCTION_URL"
+          curl -sS -X POST "$FUNCTION_URL" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            -w "\nHTTP %{http_code}\n"
