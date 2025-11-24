@@ -427,10 +427,35 @@ export async function deleteTransaction(formData: FormData) {
 		return;
 	}
 
-	const { error } = await supabase.from("transactions").delete().eq("id", payload.data.id).eq("user_id", user.id);
+	const { data: existing, error: fetchError } = await supabase
+		.from("transactions")
+		.select("*")
+		.eq("id", payload.data.id)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
 
-	if (error) {
-		console.error(error);
+	if (fetchError) {
+		console.error(fetchError);
+	} else if (existing) {
+		const deletedAt = new Date().toISOString();
+		const { error } = await supabase
+			.from("transactions")
+			.update({ deleted_at: deletedAt, updated_at: deletedAt })
+			.eq("id", payload.data.id)
+			.eq("user_id", user.id);
+
+		if (error) {
+			console.error(error);
+		} else {
+			await supabase.from("audit_log").insert({
+				user_id: user.id,
+				table_name: "transactions",
+				record_id: payload.data.id,
+				action: "delete",
+				snapshot: existing as any,
+			});
+		}
 	}
 
 	revalidatePath("/");
@@ -447,26 +472,50 @@ export async function deleteTransactionById(id: string, version?: string) {
 		throw new Error("Not signed in");
 	}
 
-	let query = supabase.from("transactions").delete().eq("id", id).eq("user_id", user.id);
-	if (version) {
-		query = query.eq("updated_at", version);
+	const { data: existing, error: fetchError } = await supabase
+		.from("transactions")
+		.select(
+			"id, amount, occurred_on, payment_method, notes, payee, account_id, category_id, type, currency_code, updated_at"
+		)
+		.eq("id", id)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
+
+	if (fetchError) {
+		throw fetchError;
 	}
 
-	const { data, error } = await query
-		.select("id, amount, occurred_on, payment_method, notes, payee, account_id, category_id, type, currency_code")
-		.maybeSingle();
+	if (!existing) {
+		throw new Error("Transaction not found or already changed.");
+	}
+
+	if (version && existing.updated_at !== version) {
+		throw new Error("Transaction was updated elsewhere.");
+	}
+
+	const deletedAt = new Date().toISOString();
+	const { error } = await supabase
+		.from("transactions")
+		.update({ deleted_at: deletedAt, updated_at: deletedAt })
+		.eq("id", id)
+		.eq("user_id", user.id);
 
 	if (error) {
 		throw error;
 	}
 
-	if (!data) {
-		throw new Error("Transaction not found or already changed.");
-	}
+	await supabase.from("audit_log").insert({
+		user_id: user.id,
+		table_name: "transactions",
+		record_id: id,
+		action: "delete",
+		snapshot: existing as any,
+	});
 
 	revalidatePath("/");
 	revalidatePath("/transactions");
-	return data;
+	return existing;
 }
 
 export async function restoreTransaction(payload: {
@@ -490,27 +539,38 @@ export async function restoreTransaction(payload: {
 		throw new Error("Not signed in");
 	}
 
-	const { error } = await supabase.from("transactions").upsert(
-		{
-			id: payload.id,
-			amount: payload.amount,
-			occurred_on: payload.occurred_on,
-			payment_method: payload.payment_method,
-			notes: payload.notes,
-			payee: payload.payee,
-			account_id: payload.account_id,
-			category_id: payload.category_id,
-			type: payload.type,
-			currency_code: payload.currency_code,
-			user_id: user.id,
-			updated_at: new Date().toISOString(),
-		},
-		{ onConflict: "id" }
-	);
+	const { data: existing, error: fetchError } = await supabase
+		.from("transactions")
+		.select("*")
+		.eq("id", payload.id)
+		.eq("user_id", user.id)
+		.maybeSingle();
+
+	if (fetchError) {
+		throw fetchError;
+	}
+
+	const restoredAt = new Date().toISOString();
+	const { error } = await supabase
+		.from("transactions")
+		.update({
+			deleted_at: null,
+			updated_at: restoredAt,
+		})
+		.eq("id", payload.id)
+		.eq("user_id", user.id);
 
 	if (error) {
 		throw error;
 	}
+
+	await supabase.from("audit_log").insert({
+		user_id: user.id,
+		table_name: "transactions",
+		record_id: payload.id,
+		action: "restore",
+		snapshot: existing as any,
+	});
 
 	revalidatePath("/");
 	revalidatePath("/transactions");

@@ -19,6 +19,7 @@ export type Database = {
 				default_payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at: string;
 					updated_at: string;
+					deleted_at: string | null;
 				};
 				Insert: {
 					id?: string;
@@ -31,6 +32,7 @@ export type Database = {
 				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Update: {
 					id?: string;
@@ -43,6 +45,7 @@ export type Database = {
 				default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
 					created_at?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Relationships: [
 					{
@@ -62,6 +65,7 @@ export type Database = {
 					month: string;
 					user_id: string;
 					updated_at: string;
+					deleted_at: string | null;
 				};
 				Insert: {
 					amount_cents: number;
@@ -71,6 +75,7 @@ export type Database = {
 					month: string;
 					user_id: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Update: {
 					amount_cents?: number;
@@ -80,6 +85,7 @@ export type Database = {
 					month?: string;
 					user_id?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Relationships: [
 					{
@@ -107,6 +113,7 @@ export type Database = {
 					type: "income" | "expense";
 					user_id: string;
 					updated_at: string;
+					deleted_at: string | null;
 				};
 				Insert: {
 					color?: string | null;
@@ -117,6 +124,7 @@ export type Database = {
 					type: "income" | "expense";
 					user_id: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Update: {
 					color?: string | null;
@@ -127,6 +135,7 @@ export type Database = {
 					type?: "income" | "expense";
 					user_id?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Relationships: [
 					{
@@ -146,6 +155,7 @@ export type Database = {
 					category_id: string | null;
 					created_at: string;
 					currency_code: string;
+					deleted_at: string | null;
 					id: string;
 					payee: string | null;
 					notes: string | null;
@@ -162,6 +172,7 @@ export type Database = {
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
+					deleted_at?: string | null;
 					id?: string;
 					payee?: string | null;
 					notes?: string | null;
@@ -178,6 +189,7 @@ export type Database = {
 					category_id?: string | null;
 					created_at?: string;
 					currency_code?: string;
+					deleted_at?: string | null;
 					id?: string;
 					payee?: string | null;
 					notes?: string | null;
@@ -225,6 +237,7 @@ export type Database = {
 					next_run_on: string;
 					created_at: string;
 					updated_at: string;
+					deleted_at: string | null;
 				};
 				Insert: {
 					id?: string;
@@ -241,6 +254,7 @@ export type Database = {
 					next_run_on: string;
 					created_at?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Update: {
 					id?: string;
@@ -257,6 +271,7 @@ export type Database = {
 					next_run_on?: string;
 					created_at?: string;
 					updated_at?: string;
+					deleted_at?: string | null;
 				};
 				Relationships: [
 					{
@@ -327,6 +342,43 @@ export type Database = {
 						foreignKeyName: "notifications_reference_id_fkey";
 						columns: ["reference_id"];
 						referencedRelation: "recurring_transactions";
+						referencedColumns: ["id"];
+					}
+				];
+			};
+			audit_log: {
+				Row: {
+					id: string;
+					user_id: string;
+					table_name: string;
+					record_id: string;
+					action: "create" | "update" | "delete" | "restore";
+					snapshot: Json | null;
+					created_at: string;
+				};
+				Insert: {
+					id?: string;
+					user_id: string;
+					table_name: string;
+					record_id: string;
+					action: "create" | "update" | "delete" | "restore";
+					snapshot?: Json | null;
+					created_at?: string;
+				};
+				Update: {
+					id?: string;
+					user_id?: string;
+					table_name?: string;
+					record_id?: string;
+					action?: "create" | "update" | "delete" | "restore";
+					snapshot?: Json | null;
+					created_at?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "audit_log_user_id_fkey";
+						columns: ["user_id"];
+						referencedRelation: "users";
 						referencedColumns: ["id"];
 					}
 				];

@@ -102,7 +102,7 @@ serve(async () => {
 			const currencyCode = await getCurrencyCode(rule.user_id, settingsCache);
 			const occurredOn = rule.next_run_on ?? todayKey;
 
-			const { data: inserted, error: insertError } = await supabase
+			const { error: insertError } = await supabase
 				.from("transactions")
 				.insert({
 					user_id: rule.user_id,

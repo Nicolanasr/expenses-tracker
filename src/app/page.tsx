@@ -486,6 +486,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
       `,
             )
             .eq('user_id', user!.id)
+            .is('deleted_at', null)
             .gte('occurred_on', rangeStart)
             .lte('occurred_on', rangeEnd);
 
@@ -512,6 +513,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .from('transactions')
             .select('account_id, amount, type')
             .eq('user_id', user!.id)
+            .is('deleted_at', null)
             .not('account_id', 'is', null),
     ]);
 

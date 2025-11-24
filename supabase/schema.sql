@@ -10,7 +10,8 @@ create table if not exists public.categories (
   user_id uuid not null references auth.users (id) on delete cascade,
   color text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 create table if not exists public.accounts (
@@ -24,6 +25,7 @@ create table if not exists public.accounts (
   default_payment_method text check (default_payment_method in ('cash','card','transfer','bank_transfer','account_transfer','other')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
   unique (user_id, name)
 );
 
@@ -54,7 +56,8 @@ create table if not exists public.transactions (
   payee text,
   notes text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 -- Category budgets per month stored as integer cents for precision.
@@ -66,6 +69,7 @@ create table if not exists public.budgets (
   amount_cents bigint not null check (amount_cents >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
   unique (user_id, category_id, month)
 );
 
@@ -80,17 +84,25 @@ create index if not exists transactions_account_id_idx
   on public.transactions (account_id);
 create index if not exists categories_user_id_idx
   on public.categories (user_id);
+create index if not exists categories_user_deleted_idx
+  on public.categories (user_id, deleted_at);
 create index if not exists accounts_user_id_idx
   on public.accounts (user_id);
+create index if not exists accounts_user_deleted_idx
+  on public.accounts (user_id, deleted_at);
 create unique index if not exists categories_user_id_name_key
   on public.categories (user_id, name);
 create index if not exists user_settings_currency_code_idx
   on public.user_settings (currency_code);
 create index if not exists budgets_user_month_idx
   on public.budgets (user_id, month);
+create index if not exists budgets_user_deleted_idx
+  on public.budgets (user_id, deleted_at);
 create index if not exists transactions_user_month_category_idx
   on public.transactions (user_id, occurred_on, category_id)
   where type = 'expense';
+create index if not exists transactions_user_deleted_idx
+  on public.transactions (user_id, deleted_at);
 
 -- Recurring transaction schedules.
 create table if not exists public.recurring_transactions (
@@ -109,7 +121,8 @@ create table if not exists public.recurring_transactions (
   frequency text not null check (frequency in ('daily', 'weekly', 'monthly', 'yearly')),
   next_run_on date not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
 );
 
 -- Notifications table to store reminder/logged events
@@ -124,6 +137,17 @@ create table if not exists public.notifications (
   metadata jsonb,
   created_at timestamptz not null default now(),
   read_at timestamptz
+);
+
+-- Audit log for data changes
+create table if not exists public.audit_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  table_name text not null,
+  record_id uuid not null,
+  action text not null check (action in ('create','update','delete','restore')),
+  snapshot jsonb,
+  created_at timestamptz not null default now()
 );
 
 -- Optional helper view to make monthly reporting easier per user.
@@ -143,6 +167,7 @@ alter table public.user_settings enable row level security;
 alter table public.budgets enable row level security;
 alter table public.recurring_transactions enable row level security;
 alter table public.notifications enable row level security;
+alter table public.audit_log enable row level security;
 
 create policy if not exists "Users can view their categories"
   on public.categories for select
@@ -216,10 +241,74 @@ begin
   create policy notifications_insert on public.notifications for insert with check (auth.uid() = user_id);
   create policy notifications_update on public.notifications for update using (auth.uid() = user_id);
   create policy notifications_delete on public.notifications for delete using (auth.uid() = user_id);
+  create policy audit_log_select on public.audit_log for select using (auth.uid() = user_id);
+  create policy audit_log_insert on public.audit_log for insert with check (auth.uid() = user_id);
 exception
   when duplicate_object then
     null;
 end $$;
+
+-- Generic audit trigger to capture create/update/delete snapshots.
+create or replace function public.fn_log_audit()
+returns trigger
+language plpgsql
+as $$
+declare
+  snapshot jsonb;
+  actor uuid;
+  rec_id uuid;
+  action text;
+begin
+  if (tg_op = 'DELETE') then
+    snapshot := to_jsonb(old);
+    rec_id := old.id;
+  else
+    snapshot := to_jsonb(new);
+    rec_id := new.id;
+  end if;
+
+  action := lower(tg_op);
+  actor := coalesce(auth.uid(), (case when tg_op = 'DELETE' then old.user_id else new.user_id end));
+
+  insert into public.audit_log (user_id, table_name, record_id, action, snapshot, created_at)
+  values (actor, tg_table_name, rec_id, action, snapshot, now());
+  return null;
+end;
+$$;
+
+do $$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'audit_categories_tr') then
+    create trigger audit_categories_tr
+    after insert or update or delete on public.categories
+    for each row execute function public.fn_log_audit();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'audit_accounts_tr') then
+    create trigger audit_accounts_tr
+    after insert or update or delete on public.accounts
+    for each row execute function public.fn_log_audit();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'audit_transactions_tr') then
+    create trigger audit_transactions_tr
+    after insert or update or delete on public.transactions
+    for each row execute function public.fn_log_audit();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'audit_budgets_tr') then
+    create trigger audit_budgets_tr
+    after insert or update or delete on public.budgets
+    for each row execute function public.fn_log_audit();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'audit_recurring_transactions_tr') then
+    create trigger audit_recurring_transactions_tr
+    after insert or update or delete on public.recurring_transactions
+    for each row execute function public.fn_log_audit();
+  end if;
+end;
+$$;
 
 -- View comparing spend vs budget per category/month.
 create or replace view public.v_budget_summary as

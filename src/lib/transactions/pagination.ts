@@ -81,6 +81,7 @@ export async function fetchTransactionsPage(
     .from('transactions')
     .select(TRANSACTION_SELECT, { count: 'exact' })
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .gte('occurred_on', filters.start)
     .lte('occurred_on', filters.end);
 

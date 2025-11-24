@@ -95,6 +95,7 @@ export async function getCategorySpendMap(month: string, payCycleStartDay: numbe
 		.select("category_id, amount")
 		.eq("type", "expense")
 		.eq("user_id", user.id)
+		.is("deleted_at", null)
 		.gte("occurred_on", startISO)
 		.lt("occurred_on", endISOExclusive);
 
