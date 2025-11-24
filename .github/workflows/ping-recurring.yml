@@ -1,33 +1,33 @@
 name: Ping recurring-run (every 6h)
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
+    schedule:
+        - cron: "0 */6 * * *"
+    workflow_dispatch:
 
 jobs:
-  ping:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Call recurring-run Edge Function
-        env:
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          if [ -z "$SUPABASE_PROJECT_REF" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "Missing SUPABASE_PROJECT_REF or SUPABASE_SERVICE_ROLE_KEY secrets"
-            exit 1
-          fi
-          FUNCTION_URL="https://${SUPABASE_PROJECT_REF}.functions.supabase.co/recurring-run"
-          echo "Calling $FUNCTION_URL"
-          resp=$(curl -sS -X POST "$FUNCTION_URL" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            -w "\nHTTP_CODE:%{http_code}")
-          echo "$resp"
-          status=$(echo "$resp" | tr ' ' '\n' | grep HTTP_CODE | cut -d: -f2)
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "Ping failed with status $status"
-            exit 1
-          fi
+    ping:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Call recurring-run Edge Function
+              env:
+                  SUPABASE_PROJECT_REF: izvhgdwaycwmnjfvssnj
+                  SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6dmhnZHdheWN3bW5qZnZzc25qIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTIzNTcyMCwiZXhwIjoyMDc2ODExNzIwfQ.JZBHl2rRvDPjBed_B2SF0LtfhgQ141bpHKwzHiiM1mk
+              run: |
+                  if [ -z "$SUPABASE_PROJECT_REF" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+                    echo "Missing SUPABASE_PROJECT_REF or SUPABASE_SERVICE_ROLE_KEY secrets"
+                    exit 1
+                  fi
+                  FUNCTION_URL="https://${SUPABASE_PROJECT_REF}.functions.supabase.co/recurring-run"
+                  echo "Calling $FUNCTION_URL"
+                  resp=$(curl -sS -X POST "$FUNCTION_URL" \
+                    -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+                    -H "Content-Type: application/json" \
+                    -d '{}' \
+                    -w "\nHTTP_CODE:%{http_code}")
+                  echo "$resp"
+                  status=$(echo "$resp" | tr ' ' '\n' | grep HTTP_CODE | cut -d: -f2)
+                  if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+                    echo "Ping failed with status $status"
+                    exit 1
+                  fi
