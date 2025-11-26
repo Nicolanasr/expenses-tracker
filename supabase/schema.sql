@@ -103,6 +103,10 @@ create index if not exists transactions_user_month_category_idx
   where type = 'expense';
 create index if not exists transactions_user_deleted_idx
   on public.transactions (user_id, deleted_at);
+create index if not exists recurring_transactions_user_id_idx
+  on public.recurring_transactions (user_id);
+create index if not exists notifications_user_id_idx
+  on public.notifications (user_id);
 
 -- Recurring transaction schedules.
 create table if not exists public.recurring_transactions (
