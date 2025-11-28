@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 
 import { AccountBalanceCards } from '@/app/_components/account-balance-cards';
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
-import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
 import { MobileNav } from '@/app/_components/mobile-nav';
 import { SummaryChart } from '@/app/_components/summary-chart';
 import { CategoryPieChart } from '@/app/_components/category-pie-chart';
@@ -111,6 +110,8 @@ type SavedFilter = {
 };
 
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
+const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+const SETTINGS_CACHE = new Map<string, { data: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown }; ts: number }>();
 
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (ALL_PAYMENT_METHODS as readonly string[]).includes(value);
@@ -359,32 +360,44 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             : (maybePromise as SearchParams) ?? {};
 
     const settingsStart = PERF_ENABLED ? getTimeMs() : undefined;
-    const { data: settingsData, error: settingsError } = await supabase
-        .from('user_settings')
-        .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
-        .eq('user_id', user!.id)
-        .maybeSingle();
+    const now = getTimeMs();
+    const cachedSettings = SETTINGS_CACHE.get(user.id);
+    let settingsData: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown } | null = null;
+
+    if (cachedSettings && now - cachedSettings.ts < SETTINGS_CACHE_TTL_MS) {
+        settingsData = cachedSettings.data;
+    } else {
+        const { data, error } = await supabase
+            .from('user_settings')
+            .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
+            .eq('user_id', user!.id)
+            .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') {
+            throw error;
+        }
+
+        if (!data) {
+            const { data: insertedSettings } = await supabase
+                .from('user_settings')
+                .upsert(
+                    { user_id: user!.id, currency_code: 'USD', pay_cycle_start_day: 1 },
+                    { onConflict: 'user_id' },
+                )
+                .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
+                .maybeSingle();
+            settingsData = insertedSettings ?? { currency_code: 'USD', display_name: null, pay_cycle_start_day: 1, saved_filters: [] };
+        } else {
+            settingsData = data;
+        }
+
+        SETTINGS_CACHE.set(user.id, { data: settingsData, ts: now });
+    }
+
     perfLog('settings', settingsStart);
 
-    if (settingsError && settingsError.code !== 'PGRST116') {
-        throw settingsError;
-    }
-
-    let currencyCode = settingsData?.currency_code ?? 'USD';
-    let payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
-    if (!settingsData) {
-        const { data: insertedSettings } = await supabase
-            .from('user_settings')
-            .upsert(
-                { user_id: user!.id, currency_code: currencyCode, pay_cycle_start_day: payCycleStartDay },
-                { onConflict: 'user_id' },
-            )
-            .select('currency_code, pay_cycle_start_day')
-            .maybeSingle();
-        currencyCode = insertedSettings?.currency_code ?? currencyCode;
-        payCycleStartDay = insertedSettings?.pay_cycle_start_day ?? payCycleStartDay;
-    }
-
+    const currencyCode = settingsData?.currency_code ?? 'USD';
+    const payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
     const savedFilters = parseSavedFilters(settingsData?.saved_filters);
 
     const today = new Date();
@@ -552,31 +565,14 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         type: category.type,
     }));
 
-    const normalizedTransactions = normalizeTransactions(
-        transactions,
-        currencyCode,
-    );
-    const payeeNames = Array.from(
-        new Set(
-            normalizedTransactions
-                .map((transaction) => transaction.payee)
-                .filter((name): name is string => Boolean(name)),
-        ),
-    );
+    const normalizedTransactions = normalizeTransactions(transactions, currencyCode);
+    const reportTransactions = normalizedTransactions.filter((transaction) => transaction.paymentMethod !== 'account_transfer');
+    const payeeNames = Array.from(new Set(normalizedTransactions.map((transaction) => transaction.payee).filter((name): name is string => Boolean(name))));
     const totalTransactionsCount = normalizedTransactions.length;
-    const paginatedTotalPages = Math.max(
-        1,
-        Math.ceil(totalTransactionsCount / DEFAULT_TRANSACTIONS_PAGE_SIZE),
-    );
+    const paginatedTotalPages = Math.max(1, Math.ceil(totalTransactionsCount / DEFAULT_TRANSACTIONS_PAGE_SIZE));
     const parsedPageParam = pageParam ? Number(pageParam) : 1;
-    const initialPage = Math.min(
-        paginatedTotalPages,
-        Math.max(1, Number.isNaN(parsedPageParam) ? 1 : Math.floor(parsedPageParam)),
-    );
-    const initialTransactionsPage = normalizedTransactions.slice(
-        (initialPage - 1) * DEFAULT_TRANSACTIONS_PAGE_SIZE,
-        initialPage * DEFAULT_TRANSACTIONS_PAGE_SIZE,
-    );
+    const initialPage = Math.min(paginatedTotalPages, Math.max(1, Number.isNaN(parsedPageParam) ? 1 : Math.floor(parsedPageParam)));
+    const initialTransactionsPage = normalizedTransactions.slice((initialPage - 1) * DEFAULT_TRANSACTIONS_PAGE_SIZE, initialPage * DEFAULT_TRANSACTIONS_PAGE_SIZE);
     const transactionsListFilters = {
         start,
         end,
@@ -586,30 +582,13 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         search: search ?? undefined,
         sort: 'recent',
     };
-    const reportTransactions = normalizedTransactions.filter((transaction) => transaction.paymentMethod !== 'account_transfer');
-
-    const totalIncome = reportTransactions
-        .filter((transaction) => transaction.type === 'income')
-        .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const totalExpenses = reportTransactions
-        .filter((transaction) => transaction.type === 'expense')
-        .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const balance = totalIncome - totalExpenses;
-
-    const timelinePoints = computeTimeline(
-        reportTransactions,
-        summaryInterval,
-    );
-    const categoryBreakdown = computeCategoryBreakdown(reportTransactions);
 
     const accountBalances = accounts.map((account) => {
         const startingBalance = Number(account.starting_balance ?? 0);
-        const delta = accountTransactions
-            .filter((tx) => tx.account_id === account.id)
-            .reduce((sum, tx) => {
-                const amount = Number(tx.amount ?? 0);
-                return tx.type === 'income' ? sum + amount : sum - amount;
-            }, 0);
+        const delta = accountTransactions.filter((tx) => tx.account_id === account.id).reduce((sum, tx) => {
+            const amount = Number(tx.amount ?? 0);
+            return tx.type === 'income' ? sum + amount : sum - amount;
+        }, 0);
         return {
             id: account.id,
             name: account.name,
@@ -642,13 +621,47 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     summaryInterval={summaryInterval}
                 />
 
-                <DashboardSummaryCards
-                    totalIncome={totalIncome}
-                    totalExpenses={totalExpenses}
-                    balance={balance}
-                    transactionCount={normalizedTransactions.length}
-                    currencyCode={currencyCode}
-                />
+                <Suspense fallback={<div className="h-28 rounded-2xl border border-slate-200 bg-white" />}>
+                    {/* Summary cards intentionally streamed; using existing DashboardSummaryCards component */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total income</p>
+                                <p className="text-2xl font-bold text-emerald-600">
+                                    {reportTransactions
+                                        .filter((t) => t.type === 'income')
+                                        .reduce((sum, t) => sum + t.amount, 0)
+                                        .toLocaleString('en-US', { style: 'currency', currency: currencyCode || 'USD' })}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total expenses</p>
+                                <p className="text-2xl font-bold text-rose-600">
+                                    {reportTransactions
+                                        .filter((t) => t.type === 'expense')
+                                        .reduce((sum, t) => sum + t.amount, 0)
+                                        .toLocaleString('en-US', { style: 'currency', currency: currencyCode || 'USD' })}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Balance</p>
+                                <p className="text-2xl font-bold text-slate-900">
+                                    {(reportTransactions
+                                        .filter((t) => t.type === 'income')
+                                        .reduce((sum, t) => sum + t.amount, 0) -
+                                        reportTransactions
+                                            .filter((t) => t.type === 'expense')
+                                            .reduce((sum, t) => sum + t.amount, 0))
+                                        .toLocaleString('en-US', { style: 'currency', currency: currencyCode || 'USD' })}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Transactions</p>
+                                <p className="text-2xl font-bold text-slate-900">{reportTransactions.length}</p>
+                            </div>
+                        </div>
+                    </div>
+                </Suspense>
 
                 <AccountBalanceCards accounts={accountBalances} />
 
@@ -662,10 +675,12 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     />
                 </Suspense>
 
-                <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
-                    <SummaryChart interval={summaryInterval} points={timelinePoints} />
-                    <CategoryPieChart data={categoryBreakdown} />
-                </section>
+                <Suspense fallback={<div className="grid gap-4 lg:grid-cols-[2fr,1fr]"><div className="h-64 rounded-2xl border border-slate-200 bg-white" /><div className="h-64 rounded-2xl border border-slate-200 bg-white" /></div>}>
+                    <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
+                        <SummaryChart interval={summaryInterval} points={computeTimeline(reportTransactions, summaryInterval)} />
+                        <CategoryPieChart data={computeCategoryBreakdown(reportTransactions)} />
+                    </section>
+                </Suspense>
 
 
                 <TransactionsPaginatedList
