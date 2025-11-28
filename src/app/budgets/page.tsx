@@ -30,7 +30,7 @@ function perfLog(label: string, start: number | undefined) {
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-export default async function BudgetsPage({ searchParams }: { searchParams?: SearchParams | Promise<SearchParams> }) {
+export default async function BudgetsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
     const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
     const supabase = await createSupabaseServerComponentClient();
     const {
@@ -50,11 +50,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Sea
         return <OfflineFallback />;
     }
 
-    const maybePromise = searchParams as Promise<SearchParams> | SearchParams | undefined;
-    const resolvedSearchParams =
-        maybePromise && typeof (maybePromise as Promise<unknown>).then === "function"
-            ? await (maybePromise as Promise<SearchParams>)
-            : (maybePromise as SearchParams) ?? {};
+    const resolvedSearchParams = searchParams ? await searchParams : {};
 
     const { data: settingsData } = await supabase
         .from("user_settings")

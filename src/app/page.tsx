@@ -32,7 +32,7 @@ function perfLog(label: string, start: number | undefined) {
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-    searchParams?: Promise<SearchParams> | SearchParams;
+    searchParams?: Promise<SearchParams>;
 };
 
 type CategoryRow = {
@@ -353,11 +353,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     if (userError) {
         return <OfflineFallback />;
     }
-    const maybePromise = searchParams as Promise<SearchParams> | SearchParams | undefined;
-    const resolvedSearchParams =
-        maybePromise && typeof (maybePromise as Promise<unknown>).then === 'function'
-            ? await (maybePromise as Promise<SearchParams>)
-            : (maybePromise as SearchParams) ?? {};
+    const resolvedSearchParams: SearchParams = searchParams ? await searchParams : {};
 
     const settingsStart = PERF_ENABLED ? getTimeMs() : undefined;
     const now = getTimeMs();

@@ -9,7 +9,7 @@ type Props = {
 	end: string;
 	categoryIds?: string[];
 	accountId?: string | null;
-	paymentMethod?: string;
+	paymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other';
 	search?: string;
 };
 

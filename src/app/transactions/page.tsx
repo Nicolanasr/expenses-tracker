@@ -67,7 +67,7 @@ function parseNumberParam(value?: string) {
 export default async function TransactionsPage({
 	searchParams,
 }: {
-	searchParams?: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
+	searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
 	const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
 	const supabase = await createSupabaseServerComponentClient();
@@ -84,11 +84,7 @@ export default async function TransactionsPage({
 		redirect("/auth/sign-in");
 	}
 
-	const maybePromise = searchParams as Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined> | undefined;
-	const resolvedSearchParams =
-		maybePromise && typeof (maybePromise as Promise<unknown>).then === "function"
-			? await (maybePromise as Promise<Record<string, string | string[] | undefined>>)
-			: (maybePromise as Record<string, string | string[] | undefined> | undefined) ?? {};
+	const resolvedSearchParams = searchParams ? await searchParams : {};
 	const sectionKey = JSON.stringify(resolvedSearchParams);
 
 	const today = new Date();
