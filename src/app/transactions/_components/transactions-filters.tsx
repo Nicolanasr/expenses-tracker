@@ -48,6 +48,7 @@ export function TransactionsFilters({
     const router = useRouter();
     const pathname = usePathname();
     const [pending, startTransition] = useTransition();
+    const [selectReady, setSelectReady] = useState(false);
 
     const [startDate, setStartDate] = useState(initialFilters.start);
     const [endDate, setEndDate] = useState(initialFilters.end);
@@ -67,6 +68,11 @@ export function TransactionsFilters({
     const [minAmount, setMinAmount] = useState(initialFilters.minAmount ?? '');
     const [maxAmount, setMaxAmount] = useState(initialFilters.maxAmount ?? '');
     const [sort, setSort] = useState(initialFilters.sort ?? 'recent');
+
+    useEffect(() => {
+        const id = window.requestAnimationFrame(() => setSelectReady(true));
+        return () => window.cancelAnimationFrame(id);
+    }, []);
 
     useEffect(() => {
         const timeout = window.setTimeout(() => {
@@ -180,13 +186,20 @@ export function TransactionsFilters({
                     </div>
                 </div>
 
-                <CategoryMultiSelect
-                    categories={categories}
-                    value={categoryNames}
-                    onChange={setCategoryNames}
-                    instanceId="transactions-category-select"
-                    label="Categories"
-                />
+                {selectReady ? (
+                    <CategoryMultiSelect
+                        categories={categories}
+                        value={categoryNames}
+                        onChange={setCategoryNames}
+                        instanceId="transactions-category-select"
+                        label="Categories"
+                    />
+                ) : (
+                    <div className="grid gap-2">
+                        <p className="text-sm font-semibold text-slate-900">Categories</p>
+                        <div className="h-[46px] rounded-xl border border-slate-200 bg-slate-100" />
+                    </div>
+                )}
 
                 <div className="grid gap-2">
                     <p className="text-sm font-semibold text-slate-900">Payment method</p>

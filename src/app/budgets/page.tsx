@@ -13,10 +13,25 @@ import { OfflineFallback } from "@/app/_components/offline-fallback";
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const dynamic = "force-dynamic";
+const PERF_ENABLED = true;
+
+function getTimeMs() {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function perfLog(label: string, start: number | undefined) {
+    if (!PERF_ENABLED || typeof start !== "number") return;
+    const duration = getTimeMs() - start;
+    console.log(`[perf][budgets] ${label}: ${duration}ms`);
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-export default async function BudgetsPage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+export default async function BudgetsPage({ searchParams }: { searchParams?: SearchParams | Promise<SearchParams> }) {
+    const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
     const supabase = await createSupabaseServerComponentClient();
     const {
         data: { user },
@@ -35,6 +50,12 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
         return <OfflineFallback />;
     }
 
+    const maybePromise = searchParams as Promise<SearchParams> | SearchParams | undefined;
+    const resolvedSearchParams =
+        maybePromise && typeof (maybePromise as Promise<unknown>).then === "function"
+            ? await (maybePromise as Promise<SearchParams>)
+            : (maybePromise as SearchParams) ?? {};
+
     const { data: settingsData } = await supabase
         .from("user_settings")
         .select("currency_code, pay_cycle_start_day")
@@ -43,7 +64,6 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 
     const payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
     const currencyCode = settingsData?.currency_code ?? "USD";
-    const resolvedSearchParams = searchParams ? await searchParams : {};
     const monthParam = resolvedSearchParams?.month;
     const requestedMonth = Array.isArray(monthParam) ? monthParam[0] : monthParam;
     const defaultCycleKey = currentCycleKeyForDate(new Date(), payCycleStartDay);
@@ -78,6 +98,8 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
         year: "numeric",
     });
     const cycleLabel = `${rangeFormatter.format(cycleRange.startDate)} – ${rangeFormatter.format(cycleRange.endDateInclusive)}`;
+
+    perfLog("page total", pageStart);
 
     return (
         <div className="min-h-screen bg-slate-50">

@@ -1,7 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import toast from 'react-hot-toast';
 import { createTransferAction, type TransferFormState } from '@/app/transfers/actions';
 
 const INITIAL_STATE: TransferFormState = { ok: false };
@@ -24,6 +26,19 @@ type Props = {
     quickActions: QuickAction[];
 };
 
+function SubmitButton() {
+    const { pending } = useFormStatus();
+    return (
+        <button
+            type="submit"
+            className="inline-flex h-11 items-center justify-center rounded-full bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={pending}
+        >
+            {pending ? 'Recording…' : 'Record transfer'}
+        </button>
+    );
+}
+
 export function TransferForm({ accounts, quickActions }: Props) {
     const [state, formAction] = useActionState<TransferFormState, FormData>(createTransferAction, INITIAL_STATE);
     const [fromAccountId, setFromAccountId] = useState(accounts[0]?.id ?? '');
@@ -45,6 +60,14 @@ export function TransferForm({ accounts, quickActions }: Props) {
         setFromAccountId(action.fromId);
         setToAccountId(action.toId);
     };
+
+    useEffect(() => {
+        if (state.ok) {
+            toast.success('Transfer completed');
+        } else if (state.message && !state.ok) {
+            toast.error(state.message);
+        }
+    }, [state.ok, state.message]);
 
     if (accounts.length < 2) {
         return (
@@ -152,13 +175,7 @@ export function TransferForm({ accounts, quickActions }: Props) {
                         placeholder="For example: Monthly savings" 
                     />
                 </div>
-                <button
-                    type="submit"
-                    className="inline-flex h-11 items-center justify-center rounded-full bg-indigo-600 px-4 text-sm font-semibold text-white transition hover:bg-indigo-500"
-                >
-                    Record transfer
-                </button>
-                {state.ok ? <p className="text-xs text-emerald-600">Transfer saved.</p> : null}
+                <SubmitButton />
             </form>
         </section>
     );

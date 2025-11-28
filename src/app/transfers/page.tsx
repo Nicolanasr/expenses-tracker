@@ -6,6 +6,20 @@ import { TransferForm } from '@/app/transfers/_components/transfer-form';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+const PERF_ENABLED = true;
+
+function getTimeMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function perfLog(label: string, start: number | undefined) {
+    if (!PERF_ENABLED || typeof start !== 'number') return;
+    const duration = getTimeMs() - start;
+    console.log(`[perf][transfers] ${label}: ${duration}ms`);
+}
 
 function matchesKeyword(value: string | null, keyword: string) {
     if (!value) return false;
@@ -28,6 +42,7 @@ function pickQuickActions(accounts: Array<{ id: string; name: string; type: stri
 }
 
 export default async function TransfersPage() {
+    const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
     const supabase = await createSupabaseServerComponentClient();
     const {
         data: { user },
@@ -75,6 +90,8 @@ export default async function TransfersPage() {
             balance: starting + movements,
         };
     });
+
+    perfLog('page total', pageStart);
 
     return (
         <div className="min-h-screen bg-slate-50">

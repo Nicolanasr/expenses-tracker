@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+
 import { AccountBalanceCards } from '@/app/_components/account-balance-cards';
 import { DashboardFilters } from '@/app/_components/dashboard-filters';
 import { DashboardSummaryCards } from '@/app/_components/dashboard-summary-cards';
@@ -7,18 +9,31 @@ import { CategoryPieChart } from '@/app/_components/category-pie-chart';
 import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
 import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { LandingPage } from '@/app/_components/landing-page';
+import { BudgetHealthSection, BudgetHealthFallback } from '@/app/_components/budget-health-section';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 import { currentCycleKeyForDate, getCycleRange } from '@/lib/pay-cycle';
-import { getTopBudgetUsage } from '@/lib/budgets';
-import { insertNotification } from '@/lib/notifications';
 import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
 
 export const dynamic = 'force-dynamic';
+const PERF_ENABLED = true;
+
+function getTimeMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function perfLog(label: string, start: number | undefined) {
+    if (!PERF_ENABLED || typeof start !== 'number') return;
+    const duration = getTimeMs() - start;
+    console.log(`[perf][overview] ${label}: ${duration}ms`);
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
 type PageProps = {
-    searchParams?: Promise<SearchParams>;
+    searchParams?: Promise<SearchParams> | SearchParams;
 };
 
 type CategoryRow = {
@@ -96,19 +111,6 @@ type SavedFilter = {
 };
 
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
-
-const BUDGET_THRESHOLD_LEVELS = [
-    { value: 50, label: '50%' },
-    { value: 75, label: '75%' },
-    { value: 90, label: '90%' },
-    { value: 100, label: '100%' },
-] as const;
-
-type BudgetThresholdMetadata = {
-    categoryId: string;
-    level: number;
-    month: string;
-};
 
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (ALL_PAYMENT_METHODS as readonly string[]).includes(value);
@@ -332,6 +334,7 @@ function computeCategoryBreakdown(transactions: NormalizedTransaction[]) {
 }
 
 export default async function OverviewPage({ searchParams }: PageProps) {
+    const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
     const supabase = await createSupabaseServerComponentClient();
     const {
         data: { user },
@@ -349,15 +352,19 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     if (userError) {
         return <OfflineFallback />;
     }
-    const userEmail = user.email ?? null;
+    const maybePromise = searchParams as Promise<SearchParams> | SearchParams | undefined;
+    const resolvedSearchParams =
+        maybePromise && typeof (maybePromise as Promise<unknown>).then === 'function'
+            ? await (maybePromise as Promise<SearchParams>)
+            : (maybePromise as SearchParams) ?? {};
 
-    const resolvedSearchParams = (await searchParams) ?? {};
-
+    const settingsStart = PERF_ENABLED ? getTimeMs() : undefined;
     const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
         .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
         .eq('user_id', user!.id)
         .maybeSingle();
+    perfLog('settings', settingsStart);
 
     if (settingsError && settingsError.code !== 'PGRST116') {
         throw settingsError;
@@ -403,6 +410,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     const accountParam = parseParam(resolvedSearchParams, 'account');
 
+    const listStart = PERF_ENABLED ? getTimeMs() : undefined;
     const [
         { data: categoryRows, error: categoriesError },
         { data: accountRows, error: accountsError },
@@ -420,6 +428,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .is('deleted_at', null)
             .order('name', { ascending: true }),
     ]);
+    perfLog('categories + accounts', listStart);
 
     if (categoriesError) {
         throw categoriesError;
@@ -429,7 +438,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     }
 
     const categories = (categoryRows ?? []) as CategoryRow[];
-    const categoryNameById = new Map(categories.map((category) => [category.id, category.name]));
     let accounts = (accountRows ?? []) as AccountRow[];
     if (accounts.length === 0) {
         const { data: insertedAccount, error: insertAccountError } = await supabase
@@ -509,6 +517,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         return query.order('occurred_on', { ascending: false });
     };
 
+    const txStart = PERF_ENABLED ? getTimeMs() : undefined;
     const [currentTransactionsResponse, accountTransactionsResponse] = await Promise.all([
         buildTransactionsQuery(start, end),
         supabase
@@ -518,6 +527,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .is('deleted_at', null)
             .not('account_id', 'is', null),
     ]);
+    perfLog('transactions fetch', txStart);
 
     if (currentTransactionsResponse.error) {
         throw currentTransactionsResponse.error;
@@ -592,64 +602,6 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     );
     const categoryBreakdown = computeCategoryBreakdown(reportTransactions);
 
-    const budgetUsage = await getTopBudgetUsage(defaultCycleKey, 50);
-    const budgetCycleLabel = formatMonthLabel(defaultCycleRange.startDate);
-    if (user?.id) {
-        let triggeredBudgetKeys = new Set<string>();
-        const { data: existingBudgetNotifications, error: existingBudgetNotificationsError } = await supabase
-            .from('notifications')
-            .select('metadata')
-            .eq('user_id', user.id)
-            .eq('type', 'budget_threshold')
-            .eq('metadata->>month', defaultCycleKey);
-
-        if (existingBudgetNotificationsError) {
-            console.error('[budget-alerts] unable to read notifications', existingBudgetNotificationsError);
-        } else {
-            triggeredBudgetKeys = new Set(
-                (existingBudgetNotifications ?? [])
-                    .map((notification) => {
-                        const metadata = notification.metadata as BudgetThresholdMetadata | null;
-                        if (!metadata?.categoryId || typeof metadata.level !== 'number' || !metadata.month) {
-                            return null;
-                        }
-                        return `${metadata.categoryId}:${metadata.level}:${metadata.month}`;
-                    })
-                    .filter((value): value is string => Boolean(value)),
-            );
-        }
-
-        for (const budget of budgetUsage) {
-            const categoryId = budget.category_id;
-            if (!categoryId) {
-                continue;
-            }
-            const pct = Math.round(budget.used_pct ?? 0);
-            const categoryName = categoryNameById.get(categoryId) ?? 'This category';
-
-            for (const threshold of BUDGET_THRESHOLD_LEVELS) {
-                const key = `${categoryId}:${threshold.value}:${defaultCycleKey}`;
-                    if (pct >= threshold.value && !triggeredBudgetKeys.has(key)) {
-                        await insertNotification(supabase, user.id, {
-                            title: `${categoryName} budget ${threshold.label} reached`,
-                            body: `${categoryName} has used ${pct}% of its ${budgetCycleLabel} budget.`,
-                        sendEmail: true,
-                        userEmail,
-                            type: 'budget_threshold',
-                            metadata: {
-                                categoryId,
-                                level: threshold.value,
-                                month: defaultCycleKey,
-                        },
-                    });
-                    triggeredBudgetKeys.add(key);
-                }
-            }
-        }
-    }
-    const topBudgetDisplay = budgetUsage.slice(0, 3);
-    const remainingBudgets = budgetUsage.slice(3);
-
     const accountBalances = accounts.map((account) => {
         const startingBalance = Number(account.starting_balance ?? 0);
         const delta = accountTransactions
@@ -667,6 +619,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             currencyCode,
         };
     });
+
+    perfLog('page total', pageStart);
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -698,71 +652,15 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
                 <AccountBalanceCards accounts={accountBalances} />
 
-                {budgetUsage.length ? (
-                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 className="text-base font-semibold text-slate-900">Budget health</h2>
-                        <p className="text-xs text-slate-500">Top categories by % used this cycle.</p>
-                        <div className="mt-3 space-y-2">
-                            {topBudgetDisplay.map((row) => {
-                                const pct = Math.round(row.used_pct ?? 0);
-                                const pctLabel = `${pct}%`;
-                                const barColor =
-                                    pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
-                                return (
-                                    <div key={row.category_id} className="space-y-1 rounded-xl border border-slate-100 p-3">
-                                        <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
-                                            <span>{categories.find((c) => c.id === row.category_id)?.name ?? 'Category'}</span>
-                                            <span className="text-xs text-slate-500">{pctLabel}</span>
-                                        </div>
-                                        <div className="h-2 w-full rounded-full bg-slate-100">
-                                            <div
-                                                className={`h-2 rounded-full ${barColor}`}
-                                                style={{ width: `${Math.min(pct, 100)}%` }}
-                                            />
-                                        </div>
-                                        <div className="flex justify-between text-xs text-slate-500">
-                                            <span>Budget {(row.budget_cents / 100).toFixed(2)}</span>
-                                            <span>Spent {(row.spent_cents / 100).toFixed(2)}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                        {remainingBudgets.length ? (
-                            <details className="mt-3">
-                                <summary className="cursor-pointer text-xs font-semibold text-indigo-600">
-                                    Show all budget insights
-                                </summary>
-                                <div className="mt-2 space-y-2">
-                                    {remainingBudgets.map((row) => {
-                                        const pct = Math.round(row.used_pct ?? 0);
-                                        const pctLabel = `${pct}%`;
-                                        const barColor =
-                                            pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
-                                        return (
-                                            <div key={row.category_id} className="space-y-1 rounded-xl border border-slate-100 p-3">
-                                                <div className="flex items-center justify-between text-sm font-semibold text-slate-900">
-                                                    <span>{categories.find((c) => c.id === row.category_id)?.name ?? 'Category'}</span>
-                                                    <span className="text-xs text-slate-500">{pctLabel}</span>
-                                                </div>
-                                                <div className="h-2 w-full rounded-full bg-slate-100">
-                                                    <div
-                                                        className={`h-2 rounded-full ${barColor}`}
-                                                        style={{ width: `${Math.min(pct, 100)}%` }}
-                                                    />
-                                                </div>
-                                                <div className="flex justify-between text-xs text-slate-500">
-                                                    <span>Budget {(row.budget_cents / 100).toFixed(2)}</span>
-                                                    <span>Spent {(row.spent_cents / 100).toFixed(2)}</span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </details>
-                        ) : null}
-                    </section>
-                ) : null}
+                <Suspense fallback={<BudgetHealthFallback />}>
+                    <BudgetHealthSection
+                        userId={user.id}
+                        userEmail={user.email ?? undefined}
+                        cycleKey={defaultCycleKey}
+                        cycleRangeStart={defaultCycleRange.startDate}
+                        categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+                    />
+                </Suspense>
 
                 <section className="grid gap-4 lg:grid-cols-[2fr,1fr]">
                     <SummaryChart interval={summaryInterval} points={timelinePoints} />

@@ -80,6 +80,7 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
     const [selectedAccountId, setSelectedAccountId] = useState(defaultAccountId);
     const [accountManuallySelected, setAccountManuallySelected] = useState(false);
     const [payeeValue, setPayeeValue] = useState<string>('');
+    const [payeeReady, setPayeeReady] = useState(false);
     const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
 
     useEffect(() => {
@@ -113,6 +114,12 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
 
         return () => window.clearTimeout(timeout);
     }, [state, categories, defaultAccountId, defaultDate]);
+
+    useEffect(() => {
+        // Avoid SSR/CSR mismatch for react-select.
+        const id = window.requestAnimationFrame(() => setPayeeReady(true));
+        return () => window.cancelAnimationFrame(id);
+    }, []);
 
 
 
@@ -460,16 +467,20 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                 <label className="text-sm font-semibold text-slate-800">
                     Payee / merchant
                 </label>
-                <CreatableSelect
-                    instanceId="payee-select"
-                    classNamePrefix="payee-select"
-                    placeholder="Search or create"
-                    value={payeeValue ? { value: payeeValue, label: payeeValue } : null}
-                    onChange={(option) => setPayeeValue(option?.value ?? '')}
-                    onCreateOption={(value) => setPayeeValue(value)}
-                    options={payeeOptions}
-                    isClearable
-                />
+                {payeeReady ? (
+                    <CreatableSelect
+                        instanceId="payee-select"
+                        classNamePrefix="payee-select"
+                        placeholder="Search or create"
+                        value={payeeValue ? { value: payeeValue, label: payeeValue } : null}
+                        onChange={(option) => setPayeeValue(option?.value ?? '')}
+                        onCreateOption={(value) => setPayeeValue(value)}
+                        options={payeeOptions}
+                        isClearable
+                    />
+                ) : (
+                    <div className="h-[46px] rounded-xl border border-slate-200 bg-slate-100" />
+                )}
                 <input type="hidden" name="payee" value={payeeValue} />
                 {state.errors?.payee?.length ? (
                     <p className="text-xs text-red-500">{state.errors.payee[0]}</p>

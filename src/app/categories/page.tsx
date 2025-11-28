@@ -7,6 +7,20 @@ import { OfflineFallback } from '@/app/_components/offline-fallback';
 import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+const PERF_ENABLED = true;
+
+function getTimeMs() {
+    if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+        return performance.now();
+    }
+    return Date.now();
+}
+
+function perfLog(label: string, start: number | undefined) {
+    if (!PERF_ENABLED || typeof start !== 'number') return;
+    const duration = getTimeMs() - start;
+    console.log(`[perf][categories] ${label}: ${duration}ms`);
+}
 
 type Category = {
     id: string;
@@ -19,6 +33,7 @@ type Category = {
 };
 
 export default async function CategoriesPage() {
+    const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
     const supabase = await createSupabaseServerComponentClient();
     const {
         data: { user },
@@ -43,6 +58,8 @@ export default async function CategoriesPage() {
         .order('created_at', { ascending: false });
 
     const categories: Category[] = data ?? [];
+
+    perfLog('page total', pageStart);
 
     return (
         <div className="min-h-screen bg-slate-50">

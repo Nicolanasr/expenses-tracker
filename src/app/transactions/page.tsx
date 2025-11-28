@@ -1,437 +1,249 @@
-import { redirect } from 'next/navigation';
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { Suspense } from "react";
 
-import { CreateTransactionForm } from '@/app/_components/create-transaction-form';
-import { MobileNav } from '@/app/_components/mobile-nav';
-import { TransactionsPaginatedList } from '@/app/_components/transactions-paginated-list';
-import { createSupabaseServerComponentClient } from '@/lib/supabase/server';
-import { fetchTransactionsPage } from '@/lib/transactions/pagination';
-import { ALL_PAYMENT_METHODS, normalizePaymentMethod, type PaymentMethod } from '@/lib/payment-methods';
-import { TransactionsFilters } from '@/app/transactions/_components/transactions-filters';
-import { TransactionsExportButton } from '@/app/transactions/_components/transactions-export-button';
-import { RecurringTransactionsPanel } from '@/app/transactions/_components/recurring-transactions-panel';
-import { processRecurringSchedules } from '@/lib/transactions/recurring';
-import { OfflineFallback } from '../_components/offline-fallback';
+import { MobileNav } from "@/app/_components/mobile-nav";
+import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
+import { ALL_PAYMENT_METHODS, type PaymentMethod } from "@/lib/payment-methods";
+import { RecurringTransactionsPanel, type RecurringRule } from "@/app/transactions/_components/recurring-transactions-panel";
+import { processRecurringSchedules } from "@/lib/transactions/recurring";
+import { OfflineFallback } from "../_components/offline-fallback";
+import { FormSection } from "@/app/transactions/_components/form-section";
+import { TransactionsSection } from "@/app/transactions/_components/transactions-section";
 
-export const dynamic = 'force-dynamic';
-
-const SORT_FIELDS = {
-    recent: { column: 'occurred_on', ascending: false, label: 'Newest first' },
-    oldest: { column: 'occurred_on', ascending: true, label: 'Oldest first' },
-    amount_desc: { column: 'amount', ascending: false, label: 'Amount: high to low' },
-    amount_asc: { column: 'amount', ascending: true, label: 'Amount: low to high' },
-} as const;
+export const dynamic = "force-dynamic";
+const PERF_ENABLED = true; // toggle to false to silence timing logs
+const LOAD_RECURRING_BY_DEFAULT = false; // set true to always load recurring; false to skip unless requested via ?recurring=1
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
 
-type Category = {
-    id: string;
-    name: string;
-    type: 'income' | 'expense';
-    icon: string | null;
-    color: string | null;
-};
+function getTimeMs() {
+	// Prefer performance.now to avoid impure Date usage warnings.
+	if (typeof performance !== "undefined" && typeof performance.now === "function") {
+		return performance.now();
+	}
+	return Date.now();
+}
 
-type TransactionRow = {
-    id: string;
-    amount: number;
-    type: 'income' | 'expense';
-    currency_code: string;
-    occurred_on: string;
-    payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other';
-    notes: string | null;
-    payee: string | null;
-    category_id: string | null;
-    categories: Category | null;
-    account_id: string | null;
-    accounts: {
-        id: string;
-        name: string;
-        type: string;
-        institution: string | null;
-        default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
-    } | null;
-    updated_at: string;
-};
+function perfLog(label: string, start: number | undefined) {
+	if (!PERF_ENABLED || typeof start !== "number") return;
+	const duration = getTimeMs() - start;
+	console.log(`[perf][transactions] ${label}: ${duration}ms`);
+}
 
-type AccountRow = {
-    id: string;
-    name: string;
-    type: string;
-    institution: string | null;
-    default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
-};
-
-type AccountOption = {
-    id: string;
-    name: string;
-    type: string;
-    institution: string | null;
-    defaultPaymentMethod: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
-};
+const SORT_FIELDS = {
+	recent: { column: "occurred_on", ascending: false, label: "Newest first" },
+	oldest: { column: "occurred_on", ascending: true, label: "Oldest first" },
+	amount_desc: { column: "amount", ascending: false, label: "Amount: high to low" },
+	amount_asc: { column: "amount", ascending: true, label: "Amount: low to high" },
+} as const;
 
 function parseParam(params: Record<string, string | string[] | undefined>, key: string) {
-    const raw = params[key];
-    if (!raw) return undefined;
-    if (Array.isArray(raw)) return raw[0];
-    return raw;
+	const raw = params[key];
+	if (!raw) return undefined;
+	if (Array.isArray(raw)) return raw[0];
+	return raw;
 }
 
 function parseCategoryParams(params: Record<string, string | string[] | undefined>, key: string) {
-    const raw = params[key];
-    if (!raw) return [];
-    if (Array.isArray(raw)) {
-        return raw.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-    }
-    return raw.trim().length ? [raw] : [];
+	const raw = params[key];
+	if (!raw) return [];
+	if (Array.isArray(raw)) {
+		return raw.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+	}
+	return raw.trim().length ? [raw] : [];
 }
 
 function parseNumberParam(value?: string) {
-    if (value === undefined) {
-        return undefined;
-    }
-    const parsed = Number(value);
-    if (Number.isNaN(parsed)) {
-        return undefined;
-    }
-    return parsed;
+	if (value === undefined) {
+		return undefined;
+	}
+	const parsed = Number(value);
+	if (Number.isNaN(parsed)) {
+		return undefined;
+	}
+	return parsed;
 }
 
 export default async function TransactionsPage({
-    searchParams,
+	searchParams,
 }: {
-    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+	searchParams?: Record<string, string | string[] | undefined> | Promise<Record<string, string | string[] | undefined>>;
 }) {
-    const supabase = await createSupabaseServerComponentClient();
-    let userId: string | null = null;
-    let userEmail: string | null = null;
-    let userError: Error | null = null;
-    try {
-        const {
-            data: { user },
-            error,
-        } = await supabase.auth.getUser();
-        userId = user?.id ?? null;
-        userEmail = user?.email ?? null;
-        userError = (error as Error) ?? null;
-    } catch (error) {
-        userId = null;
-        userError = error as Error;
-    }
+	const pageStart = PERF_ENABLED ? getTimeMs() : undefined;
+	const supabase = await createSupabaseServerComponentClient();
+	const {
+		data: { user },
+		error: userError,
+	} = await supabase.auth.getUser();
 
-    if (userError?.name == "AuthRetryableFetchError") {
-        return <OfflineFallback />;
-    }
+	if (userError?.name === "AuthRetryableFetchError") {
+		return <OfflineFallback />;
+	}
 
-    if (!userId) {
-        redirect('/auth/sign-in');
-    }
+	if (!user?.id) {
+		redirect("/auth/sign-in");
+	}
 
+	const maybePromise = searchParams as Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined> | undefined;
+	const resolvedSearchParams =
+		maybePromise && typeof (maybePromise as Promise<unknown>).then === "function"
+			? await (maybePromise as Promise<Record<string, string | string[] | undefined>>)
+			: (maybePromise as Record<string, string | string[] | undefined> | undefined) ?? {};
+	const sectionKey = JSON.stringify(resolvedSearchParams);
 
-    const isOffline = !userId;
+	const today = new Date();
+	const defaultEnd = today.toISOString().slice(0, 10);
+	const defaultStartDate = new Date(today);
+	defaultStartDate.setDate(defaultStartDate.getDate() - 29);
+	const defaultStart = defaultStartDate.toISOString().slice(0, 10);
 
-    const resolvedSearchParams = (await searchParams) ?? {};
+	const start = parseParam(resolvedSearchParams, "start") ?? defaultStart;
+	const end = parseParam(resolvedSearchParams, "end") ?? defaultEnd;
+	const categoryFilters = parseCategoryParams(resolvedSearchParams, "category");
+	const paymentFilter = parseParam(resolvedSearchParams, "payment");
+	const typeFilter = parseParam(resolvedSearchParams, "type");
+	const minAmount = parseParam(resolvedSearchParams, "minAmount");
+	const maxAmount = parseParam(resolvedSearchParams, "maxAmount");
+	const sortParam = parseParam(resolvedSearchParams, "sort") ?? "recent";
+	const searchTerm = parseParam(resolvedSearchParams, "search");
+	const pageParam = parseParam(resolvedSearchParams, "page");
+	const accountFilter = parseParam(resolvedSearchParams, "account");
+	const recurringParam = parseParam(resolvedSearchParams, "recurring");
+	const loadRecurring = recurringParam === "1" || LOAD_RECURRING_BY_DEFAULT;
 
-    const today = new Date();
-    const defaultEnd = today.toISOString().slice(0, 10);
-    const defaultStartDate = new Date(today);
-    defaultStartDate.setDate(defaultStartDate.getDate() - 29);
-    const defaultStart = defaultStartDate.toISOString().slice(0, 10);
+	const minAmountValue = parseNumberParam(minAmount);
+	const maxAmountValue = parseNumberParam(maxAmount);
+	const sanitizedPaymentMethod = paymentFilter && (ALL_PAYMENT_METHODS as readonly string[]).includes(paymentFilter) ? (paymentFilter as PaymentMethod) : undefined;
+	const sanitizedType = typeFilter === "income" || typeFilter === "expense" ? (typeFilter as "income" | "expense") : undefined;
+	const sortKey = Object.prototype.hasOwnProperty.call(SORT_FIELDS, sortParam) ? (sortParam as keyof typeof SORT_FIELDS) : "recent";
+	const parsedPage = parseNumberParam(pageParam);
+	const page = Math.max(1, parsedPage ? Math.floor(parsedPage) : 1);
 
-    const start = parseParam(resolvedSearchParams, 'start') ?? defaultStart;
-    const end = parseParam(resolvedSearchParams, 'end') ?? defaultEnd;
-    const categoryFilters = parseCategoryParams(resolvedSearchParams, 'category');
-    const paymentFilter = parseParam(resolvedSearchParams, 'payment');
-    const typeFilter = parseParam(resolvedSearchParams, 'type');
-    const minAmount = parseParam(resolvedSearchParams, 'minAmount');
-    const maxAmount = parseParam(resolvedSearchParams, 'maxAmount');
-    const sortParam = parseParam(resolvedSearchParams, 'sort') ?? 'recent';
-    const pageParam = parseParam(resolvedSearchParams, 'page');
-    const accountFilter = parseParam(resolvedSearchParams, 'account');
+	const transactionFiltersForList = {
+		start,
+		end,
+		categoryIds: categoryFilters.length ? categoryFilters : undefined,
+		paymentMethod: sanitizedPaymentMethod,
+		search: searchTerm,
+		type: sanitizedType,
+		minAmount: minAmountValue,
+		maxAmount: maxAmountValue,
+		sort: sortKey,
+		accountId: accountFilter || undefined,
+	};
 
-    const minAmountValue = parseNumberParam(minAmount);
-    const maxAmountValue = parseNumberParam(maxAmount);
-    const sanitizedPaymentMethod =
-        paymentFilter && (ALL_PAYMENT_METHODS as readonly string[]).includes(paymentFilter)
-            ? (paymentFilter as PaymentMethod)
-            : undefined;
-    const sanitizedType = typeFilter === 'income' || typeFilter === 'expense' ? (typeFilter as 'income' | 'expense') : undefined;
-    const sortKey = Object.prototype.hasOwnProperty.call(SORT_FIELDS, sortParam)
-        ? (sortParam as keyof typeof SORT_FIELDS)
-        : 'recent';
-    const parsedPage = parseNumberParam(pageParam);
-    const page = Math.max(1, parsedPage ? Math.floor(parsedPage) : 1);
+	const sharedInitialFilters = {
+		start,
+		end,
+		categoryNames: categoryFilters,
+		paymentMethod: sanitizedPaymentMethod ?? "",
+		search: searchTerm ?? "",
+		accountId: accountFilter ?? "",
+		type: typeFilter ?? "",
+		minAmount: minAmount ?? "",
+		maxAmount: maxAmount ?? "",
+		sort: sortParam ?? "recent",
+	};
 
-    let currencyCode = 'USD';
-    if (!isOffline && userId) {
-        const { data: settings } = await supabase
-            .from('user_settings')
-            .select('currency_code')
-            .eq('user_id', userId)
-            .maybeSingle();
+	let recurringRules: RecurringRule[] = [];
+	let currencyCode = "USD";
 
-        currencyCode = settings?.currency_code ?? 'USD';
-        if (!settings) {
-            const { data: inserted } = await supabase
-                .from('user_settings')
-                .upsert({ user_id: userId, currency_code: currencyCode }, { onConflict: 'user_id' })
-                .select('currency_code')
-                .maybeSingle();
-            currencyCode = inserted?.currency_code ?? currencyCode;
-        }
-    }
+	if (loadRecurring) {
+		const recurringStart = PERF_ENABLED ? getTimeMs() : undefined;
 
-    const categories: Category[] = [];
-    const accounts: AccountRow[] = [];
-    let paginated:
-        | {
-            rows: TransactionRow[];
-            total: number;
-        }
-        | null = null;
+		const { data: settings } = await supabase.from("user_settings").select("currency_code").eq("user_id", user.id).maybeSingle();
+		currencyCode = settings?.currency_code ?? "USD";
 
-    if (!isOffline) {
-        const [
-            { data: categoryRows, error: categoriesError },
-            { data: accountRows, error: accountsError },
-        ] = await Promise.all([
-            supabase
-                .from('categories')
-                .select('id, name, type, icon, color')
-                .eq('user_id', userId!)
-                .is('deleted_at', null)
-                .order('name', { ascending: true }),
-            supabase
-                .from('accounts')
-                .select('id, name, type, institution, default_payment_method')
-                .eq('user_id', userId!)
-                .is('deleted_at', null)
-                .order('name', { ascending: true }),
-        ]);
+		const reminders = await processRecurringSchedules(supabase, user.id, currencyCode, user.email ?? undefined);
+		const { data: rows, error: recurringError } = await supabase
+			.from("recurring_transactions")
+			.select("id, name, amount, type, payment_method, notes, auto_log, frequency, next_run_on, categories (id, name), accounts (id, name)")
+			.eq("user_id", user.id)
+			.is("deleted_at", null)
+			.order("name", { ascending: true });
+		if (recurringError) {
+			throw recurringError;
+		}
+		const dueIds = new Set((reminders ?? []).map((rule) => rule.id));
 
-        if (categoriesError) {
-            throw categoriesError;
-        }
-        if (accountsError) {
-            throw accountsError;
-        }
+		recurringRules =
+			rows?.map((row) => ({
+				id: row.id,
+				name: row.name,
+				amount: Number(row.amount ?? 0),
+				type: row.type as "income" | "expense",
+				paymentMethod: row.payment_method,
+				notes: row.notes ?? null,
+				autoLog: row.auto_log ?? true,
+				frequency: row.frequency as "daily" | "weekly" | "monthly" | "yearly",
+				nextRunOn: row.next_run_on,
+				categoryName: row.categories?.name ?? null,
+				accountName: row.accounts?.name ?? null,
+				isDue: dueIds.has(row.id) || (!row.auto_log && row.next_run_on <= new Date().toISOString().slice(0, 10)),
+			})) ?? [];
 
-        categories.push(...((categoryRows ?? []) as Category[]));
+		perfLog("recurring fetch + process", recurringStart);
+	}
 
-        const initialAccounts = (accountRows ?? []) as AccountRow[];
-        if (initialAccounts.length === 0) {
-            const { data: insertedAccount, error: insertAccountError } = await supabase
-                .from('accounts')
-                .insert({
-                    user_id: userId!,
-                    name: 'Main account',
-                    type: 'checking',
-                })
-                .select('id, name, type, institution, default_payment_method')
-                .single();
-            if (insertAccountError) {
-                console.error(insertAccountError);
-            } else if (insertedAccount) {
-                initialAccounts.push(insertedAccount as AccountRow);
-            }
-        }
-        accounts.push(...initialAccounts);
-    }
+	perfLog("page total", pageStart);
 
-    const nameToId = new Map(categories.map((category) => [category.name, category.id]));
-    const categoryIdSet = new Set(categories.map((category) => category.id));
-    const normalizedCategoryFilters = categoryFilters
-        .map((value) => {
-            if (categoryIdSet.has(value)) {
-                return value;
-            }
-            return nameToId.get(value);
-        })
-        .filter((value): value is string => Boolean(value));
+	return (
+		<div className="min-h-screen bg-slate-50">
+			<MobileNav />
 
-    const accountOptions: AccountOption[] = accounts.map((account) => ({
-        id: account.id,
-        name: account.name,
-        type: account.type,
-        institution: account.institution,
-        defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
-    }));
-    const accountNameToId = new Map(accountOptions.map((account) => [account.name, account.id]));
-    const selectedAccountId = accountFilter
-        ? accountOptions.some((account) => account.id === accountFilter)
-            ? accountFilter
-            : accountNameToId.get(accountFilter) ?? undefined
-        : undefined;
+			<main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
+				<Suspense fallback={<FormSkeleton />}>
+					<FormSection userId={user.id} />
+				</Suspense>
 
-    const transactionFiltersForList = {
-        start,
-        end,
-        categoryIds: normalizedCategoryFilters.length ? normalizedCategoryFilters : undefined,
-        paymentMethod: sanitizedPaymentMethod,
-        type: sanitizedType,
-        minAmount: minAmountValue,
-        maxAmount: maxAmountValue,
-        sort: sortKey,
-        accountId: selectedAccountId,
-    };
+					{loadRecurring ? (
+						<section>
+							<RecurringTransactionsPanel rules={recurringRules} currencyCode={currencyCode} />
+						</section>
+					) : (
+					<section className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-700">
+						<div className="flex items-center justify-between">
+							<div>
+								<p className="font-semibold text-slate-900">Recurring schedules</p>
+								<p className="text-xs text-slate-500">Load only when needed to speed up this page.</p>
+							</div>
+							<Link
+								href={`/transactions?recurring=1`}
+								className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-indigo-600 hover:border-indigo-300 hover:text-indigo-500"
+							>
+								Load recurring
+							</Link>
+						</div>
+					</section>
+				)}
 
-    if (!isOffline) {
-        paginated = await fetchTransactionsPage(supabase, userId!, {
-            page,
-            pageSize: DEFAULT_TRANSACTIONS_PAGE_SIZE,
-            filters: transactionFiltersForList,
-        });
-    }
+				<Suspense key={sectionKey} fallback={<ListSkeleton />}>
+					<TransactionsSection
+						userId={user.id}
+						page={page}
+						pageSize={DEFAULT_TRANSACTIONS_PAGE_SIZE}
+						filters={transactionFiltersForList}
+						sharedInitialFilters={sharedInitialFilters}
+					/>
+				</Suspense>
+			</main>
+		</div>
+	);
+}
 
-    const reminders = await processRecurringSchedules(supabase, userId!, currencyCode, userEmail);
-    const { data: recurringRows, error: recurringError } = await supabase
-        .from('recurring_transactions')
-        .select(
-            'id, name, amount, type, payment_method, notes, auto_log, frequency, next_run_on, categories (id, name), accounts (id, name)',
-        )
-        .eq('user_id', userId!)
-        .is('deleted_at', null)
-        .order('name', { ascending: true });
-    if (recurringError) {
-        throw recurringError;
-    }
-    const dueIds = new Set((reminders ?? []).map((rule) => rule.id));
+function FormSkeleton() {
+	return <div className="h-72 animate-pulse rounded-3xl border border-slate-200 bg-white" />;
+}
 
-    const normalizedTransactions = (paginated?.rows ?? []).map((transaction) => ({
-        id: transaction.id,
-        amount: Number(transaction.amount ?? 0),
-        type: transaction.type,
-        currencyCode: transaction.currency_code ?? currencyCode,
-        occurredOn: transaction.occurred_on,
-        paymentMethod: normalizePaymentMethod(transaction.payment_method),
-        notes: transaction.notes,
-        payee: transaction.payee ?? null,
-        categoryId: transaction.category_id ?? transaction.categories?.id ?? null,
-        updatedAt: transaction.updated_at,
-        category: transaction.categories
-            ? {
-                id: transaction.categories.id,
-                name: transaction.categories.name,
-                icon: transaction.categories.icon,
-                color: transaction.categories.color,
-                type: transaction.categories.type,
-            }
-            : null,
-        accountId: transaction.account_id ?? transaction.accounts?.id ?? null,
-        account: transaction.accounts
-            ? {
-                id: transaction.accounts.id,
-                name: transaction.accounts.name,
-                type: transaction.accounts.type,
-                institution: transaction.accounts.institution,
-                defaultPaymentMethod: transaction.accounts.default_payment_method ?? null,
-            }
-            : null,
-    }));
-
-    const recurringRules = (recurringRows ?? []).map((row) => ({
-        id: row.id,
-        name: row.name,
-        amount: Number(row.amount ?? 0),
-        type: row.type as 'income' | 'expense',
-        paymentMethod: row.payment_method,
-        notes: row.notes ?? null,
-        autoLog: row.auto_log ?? true,
-        frequency: row.frequency as 'daily' | 'weekly' | 'monthly' | 'yearly',
-        nextRunOn: row.next_run_on,
-        categoryName: row.categories?.name ?? null,
-        accountName: row.accounts?.name ?? null,
-        isDue: dueIds.has(row.id) || (!row.auto_log && row.next_run_on <= new Date().toISOString().slice(0, 10)),
-    }));
-    const payees = Array.from(new Set(normalizedTransactions.map((transaction) => transaction.payee).filter((name): name is string => Boolean(name))));
-
-
-    const categoryOptions = (categories ?? []).map((category) => ({
-        id: category.id,
-        name: category.name,
-        icon: category.icon,
-        color: category.color,
-        type: category.type,
-    }));
-
-    const nameLookup = new Map(categories.map((category) => [category.id, category.name]));
-    const categoryNameSet = new Set(categories.map((category) => category.name));
-    const initialCategoryNames = categoryFilters
-        .map((entry) => {
-            if (categoryNameSet.has(entry)) {
-                return entry;
-            }
-            return nameLookup.get(entry);
-        })
-        .filter((entry): entry is string => Boolean(entry));
-
-    const sharedInitialFilters = {
-        start,
-        end,
-        categoryNames: initialCategoryNames,
-        paymentMethod: sanitizedPaymentMethod ?? '',
-        type: typeFilter ?? '',
-        minAmount: minAmount ?? '',
-        maxAmount: maxAmount ?? '',
-        sort: sortParam ?? 'recent',
-        accountId: selectedAccountId ?? '',
-    };
-
-    return (
-        <div className="min-h-screen bg-slate-50">
-            <MobileNav />
-
-            <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-5 py-6">
-                <section>
-                    <CreateTransactionForm categories={categories ?? []} accounts={accountOptions} payees={payees} />
-                </section>
-
-                <section>
-                    <RecurringTransactionsPanel rules={recurringRules} currencyCode={currencyCode} />
-                </section>
-
-                {/* <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <details>
-                        <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
-                            Filters
-                        </summary>
-                        <div className="mt-4">
-                            <TransactionsFilters categories={categories} initialFilters={sharedInitialFilters} />
-                        </div>
-                    </details>
-                </section> */}
-
-                <TransactionsPaginatedList
-                    initialTransactions={normalizedTransactions}
-                    totalCount={paginated?.total ?? 0}
-                    pageSize={DEFAULT_TRANSACTIONS_PAGE_SIZE}
-                    page={page}
-                    filters={transactionFiltersForList}
-                    categories={categoryOptions}
-                    accounts={accountOptions}
-                    payees={payees}
-                    allowEditing={!isOffline}
-                    preferCacheOnMount={isOffline}
-                    title="All transactions"
-                    emptyMessage="Nothing here yet. Adjust the filters or add a transaction above."
-                    renderFilters={
-                        <details key="transactions-key">
-                            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-900">
-                                Filters
-                            </summary>
-                            <div className="mt-4">
-                                <TransactionsFilters
-                                    categories={categories}
-                                    accounts={accountOptions}
-                                    initialFilters={sharedInitialFilters}
-                                    compact
-                                />
-                                <div className="mt-3 flex justify-end">
-                                    <TransactionsExportButton filters={transactionFiltersForList} />
-                                </div>
-                            </div>
-                        </details>
-                    }
-                />
-            </main>
-        </div>
-    );
+function ListSkeleton() {
+	return (
+		<div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+			<div className="mb-4 h-4 w-40 animate-pulse rounded bg-slate-200" />
+			<div className="space-y-3">
+				{Array.from({ length: 5 }).map((_, idx) => (
+					<div key={idx} className="h-16 animate-pulse rounded-xl bg-slate-100" />
+				))}
+			</div>
+		</div>
+	);
 }

@@ -7,7 +7,7 @@ import { PAYMENT_METHOD_LABELS } from '@/lib/payment-methods';
 
 const INITIAL_STATE: RecurringFormState = { ok: false };
 
-type RecurringRule = {
+export type RecurringRule = {
     id: string;
     name: string;
     amount: number;

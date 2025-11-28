@@ -66,6 +66,10 @@ const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 	budget_threshold: 'Budget alert',
 };
 
+let cachedNotifications: NotificationItem[] | null = null;
+let cachedFetchedAt = 0;
+const CACHE_TTL_MS = 60 * 1000;
+
 export function MobileNav() {
     const pathname = usePathname();
     const [menuOpen, setMenuOpen] = useState(false);
@@ -80,7 +84,10 @@ export function MobileNav() {
             const response = await fetch('/api/notifications', { cache: 'no-store' });
             if (response.ok) {
                 const payload = await response.json();
-                setNotifications(payload.notifications ?? []);
+                const next = payload.notifications ?? [];
+                cachedNotifications = next;
+                cachedFetchedAt = Date.now();
+                setNotifications(next);
             }
         } catch (error) {
             console.error('[notifications] unable to fetch', error);
@@ -90,6 +97,11 @@ export function MobileNav() {
     }, []);
 
     useEffect(() => {
+        const isFresh = cachedNotifications && Date.now() - cachedFetchedAt < CACHE_TTL_MS;
+        if (isFresh) {
+            setNotifications(cachedNotifications!);
+            return;
+        }
         fetchNotifications();
     }, [fetchNotifications]);
 
