@@ -518,6 +518,117 @@ export async function deleteTransactionById(id: string, version?: string) {
 	return existing;
 }
 
+export async function bulkDeleteTransactions(ids: string[]) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	if (!user) {
+		throw new Error("Not signed in");
+	}
+	if (!Array.isArray(ids) || ids.length === 0) {
+		return { ok: false, message: "No transactions selected" };
+	}
+
+	const { data: existing, error: fetchError } = await supabase
+		.from("transactions")
+		.select("id, amount, occurred_on, payment_method, notes, payee, account_id, category_id, type, currency_code, updated_at")
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.in("id", ids);
+
+	if (fetchError) {
+		throw fetchError;
+	}
+
+	const deletedAt = new Date().toISOString();
+	const { error: deleteError } = await supabase
+		.from("transactions")
+		.update({ deleted_at: deletedAt, updated_at: deletedAt })
+		.eq("user_id", user.id)
+		.in("id", ids);
+
+	if (deleteError) {
+		throw deleteError;
+	}
+
+	if (existing?.length) {
+		await supabase.from("audit_log").insert(
+			existing.map((row) => ({
+				user_id: user.id,
+				table_name: "transactions",
+				record_id: row.id,
+				action: "delete",
+				snapshot: row as any,
+			})),
+		);
+	}
+
+	revalidatePath("/");
+	revalidatePath("/transactions");
+	return { ok: true };
+}
+
+export async function bulkUpdateTransactionCategory(ids: string[], categoryId: string) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+	} = await supabase.auth.getUser();
+
+	if (!user) {
+		throw new Error("Not signed in");
+	}
+	if (!Array.isArray(ids) || ids.length === 0 || !categoryId) {
+		return { ok: false, message: "Missing selection or category" };
+	}
+
+	const { error: categoryError, data: categoryRow } = await supabase
+		.from("categories")
+		.select("id")
+		.eq("id", categoryId)
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.maybeSingle();
+	if (categoryError) {
+		throw categoryError;
+	}
+	if (!categoryRow) {
+		return { ok: false, message: "Invalid category" };
+	}
+
+	const { data: existing, error: fetchError } = await supabase
+		.from("transactions")
+		.select("id, amount, occurred_on, payment_method, notes, payee, account_id, category_id, type, currency_code, updated_at")
+		.eq("user_id", user.id)
+		.is("deleted_at", null)
+		.in("id", ids);
+	if (fetchError) throw fetchError;
+
+	const { error: updateError } = await supabase
+		.from("transactions")
+		.update({ category_id: categoryId, updated_at: new Date().toISOString() })
+		.eq("user_id", user.id)
+		.in("id", ids);
+	if (updateError) throw updateError;
+
+	if (existing?.length) {
+		await supabase.from("audit_log").insert(
+			existing.map((row) => ({
+				user_id: user.id,
+				table_name: "transactions",
+				record_id: row.id,
+				action: "update",
+				snapshot: { ...row, category_id: categoryId } as any,
+			})),
+		);
+	}
+
+	revalidatePath("/");
+	revalidatePath("/transactions");
+	return { ok: true };
+}
+
 export async function restoreTransaction(payload: {
 	id: string;
 	amount: number;

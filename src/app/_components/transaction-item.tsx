@@ -58,6 +58,7 @@ type TransactionItemProps = {
     accounts: AccountOption[];
     payees: string[];
     enableEditing?: boolean;
+    onSelect?: (id: string) => void;
 };
 
 const EDIT_INITIAL_STATE: FormState = { ok: false, errors: {} };
@@ -407,6 +408,7 @@ export function TransactionItem({
     accounts,
     payees,
     enableEditing = false,
+    onSelect,
 }: TransactionItemProps) {
     const [isEditing, setIsEditing] = useState(false);
     const amountFormatter = useMemo(
@@ -418,8 +420,16 @@ export function TransactionItem({
         [transaction.currencyCode],
     );
 
+    const handleContainerClick = (event: React.MouseEvent<HTMLElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('button') || target.closest('a') || target.closest('input') || target.closest('textarea') || target.closest('select')) {
+            return;
+        }
+        onSelect?.(transaction.id);
+    };
+
     return (
-        <article className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <article className="rounded-3xl border-slate-200 bg-white pl-0! p-4 sm:p-5" onClick={handleContainerClick}>
             {enableEditing && isEditing ? (
                 <TransactionEditForm
                     transaction={transaction}
