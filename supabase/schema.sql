@@ -35,6 +35,7 @@ create table if not exists public.user_settings (
   display_name text,
   pay_cycle_start_day integer not null default 1 check (pay_cycle_start_day between 1 and 31),
   saved_filters jsonb not null default '[]'::jsonb,
+  budget_thresholds jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -7,12 +7,13 @@ import type { BudgetRow } from "@/lib/budgets";
 import { fromCents } from "@/lib/money";
 import { queueBudgetMutation } from "@/lib/outbox-sync";
 
-import { deleteBudgetAction, saveBudgetsAction } from "./actions";
+import { deleteBudgetAction, saveBudgetsAction, saveBudgetThresholdsAction } from "./actions";
 
 type Category = {
     id: string;
     name: string;
 };
+type ThresholdMap = Record<string, number[]>;
 
 function pctColor(pct: number) {
     if (pct >= 90) return "bg-rose-500";
@@ -35,6 +36,7 @@ export default function BudgetTable({
     categorySpend,
     cycleLabel,
     currencyCode,
+    initialThresholds,
 }: {
     month: string;
     categories: Category[];
@@ -42,6 +44,7 @@ export default function BudgetTable({
     categorySpend: Record<string, number>;
     cycleLabel: string;
     currencyCode: string;
+    initialThresholds: ThresholdMap;
 }) {
     const [isPending, startTransition] = useTransition();
     const [drafts, setDrafts] = useState<Record<string, string>>(() => {
@@ -53,6 +56,14 @@ export default function BudgetTable({
     });
     const [banner, setBanner] = useState<string | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [thresholdDrafts, setThresholdDrafts] = useState<Record<string, string>>(() => {
+        const initial: Record<string, string> = {};
+        categories.forEach((cat) => {
+            const levels = initialThresholds[cat.id];
+            initial[cat.id] = levels?.length ? levels.join(", ") : "50, 75, 90";
+        });
+        return initial;
+    });
 
     useEffect(() => {
         const reset: Record<string, string> = {};
@@ -60,8 +71,14 @@ export default function BudgetTable({
             reset[row.category_id] = fromCents(row.budget_cents ?? 0);
         });
         setDrafts(reset);
+        const nextThresholds: Record<string, string> = {};
+        categories.forEach((cat) => {
+            const levels = initialThresholds[cat.id];
+            nextThresholds[cat.id] = levels?.length ? levels.join(", ") : "50, 75, 90";
+        });
+        setThresholdDrafts(nextThresholds);
         setBanner(null);
-    }, [month, summary]);
+    }, [month, summary, categories, initialThresholds]);
 
     const summaryMap = new Map(summary.map((row) => [row.category_id, row]));
     const hasCategories = categories.length > 0;
@@ -145,10 +162,21 @@ export default function BudgetTable({
                                     const bulk = new FormData();
                                     bulk.append('payload', JSON.stringify(payload));
                                     await saveBudgetsAction(bulk);
-                                    setBanner('Budgets saved.');
-                                    toast.success('Budgets saved');
+                                    const thresholdsPayload = new FormData();
+                                    thresholdsPayload.append(
+                                        "payload",
+                                        JSON.stringify({
+                                            items: categories.map((cat) => ({
+                                                categoryId: cat.id,
+                                                levels: parseLevels(thresholdDrafts[cat.id]),
+                                            })),
+                                        }),
+                                    );
+                                    await saveBudgetThresholdsAction(thresholdsPayload);
+                                    setBanner('Budgets and alerts saved.');
+                                    toast.success('Budgets and alerts saved');
                                 } catch {
-                                    toast.error('Unable to save budgets');
+                                    toast.error('Unable to save budgets/alerts');
                                 }
                             });
                         }}
@@ -179,6 +207,7 @@ export default function BudgetTable({
                                     <th className="px-3 py-2 text-right">Spent</th>
                                     <th className="px-3 py-2 text-right">Remaining</th>
                                     <th className="px-3 py-2 text-left">% Used</th>
+                                    <th className="px-3 py-2 text-left">Alerts (%)</th>
                                     <th className="px-3 py-2 text-right">Actions</th>
                                 </tr>
                             </thead>
@@ -225,6 +254,21 @@ export default function BudgetTable({
                                                     <span className="text-xs font-semibold text-slate-600">{usedPct.toFixed(1)}%</span>
                                                     <BudgetBar pct={usedPct} />
                                                 </div>
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <input
+                                                    name={`alerts-${category.id}`}
+                                                    value={thresholdDrafts[category.id] ?? ""}
+                                                    onChange={(event) =>
+                                                        setThresholdDrafts((prev) => ({
+                                                            ...prev,
+                                                            [category.id]: event.target.value,
+                                                        }))
+                                                    }
+                                                    className="w-32 rounded-xl border border-slate-200 px-3 py-1 text-sm font-semibold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                                                    placeholder="50,75,90"
+                                                />
+                                                <p className="text-[11px] text-slate-500">Comma-separated %</p>
                                             </td>
                                             <td className="px-3 py-3 text-right">
                                                 {canDelete ? (
@@ -277,4 +321,17 @@ export default function BudgetTable({
             </div>
         </>
     );
+}
+
+function parseLevels(input: string | undefined): number[] {
+    if (!input) return [];
+    return Array.from(
+        new Set(
+            input
+                .split(",")
+                .map((part) => Number(part.trim()))
+                .filter((n) => Number.isFinite(n) && n > 0 && n <= 100)
+                .map((n) => Math.round(n)),
+        ),
+    ).sort((a, b) => a - b);
 }

@@ -25,6 +25,7 @@
     "react-icons": "^5.5.0",
     "react-select": "^5.10.2",
     "react-swiper": "^0.1.5",
+    "sonner": "^2.0.7",
     "swiper": "^12.0.3",
     "yet-another-react-lightbox": "^3.25.0",
     "zod": "^4.1.12"

@@ -54,7 +54,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
 
     const { data: settingsData } = await supabase
         .from("user_settings")
-        .select("currency_code, pay_cycle_start_day")
+        .select("currency_code, pay_cycle_start_day, budget_thresholds")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -77,6 +77,18 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
         getCategorySpendMap(month, payCycleStartDay),
         supabase.from("budgets").select("month, amount_cents").eq("user_id", user.id).is("deleted_at", null),
     ]);
+    const thresholdsMap = Object.fromEntries(
+        Array.isArray(settingsData?.budget_thresholds)
+            ? (settingsData?.budget_thresholds as { categoryId?: string; levels?: number[] }[])
+                    .filter((item) => typeof item.categoryId === "string" && item.categoryId)
+                    .map((item) => [
+                        item.categoryId as string,
+                        Array.isArray(item.levels)
+                            ? item.levels.filter((n) => typeof n === "number").map((n) => Number(n))
+                            : [],
+                    ])
+            : [],
+    );
 
     const categories = categoryRows ?? [];
     const monthTotalsMap = new Map<string, number>();
@@ -125,8 +137,10 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
                         categorySpend={categorySpend ?? {}}
                         currencyCode={currencyCode}
                         cycleLabel={cycleLabel}
+                        initialThresholds={thresholdsMap}
                     />
                 </section>
+
             </main>
         </div>
     );

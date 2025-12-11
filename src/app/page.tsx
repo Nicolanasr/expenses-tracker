@@ -111,7 +111,10 @@ type SavedFilter = {
 
 const DEFAULT_TRANSACTIONS_PAGE_SIZE = 14;
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
-const SETTINGS_CACHE = new Map<string, { data: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown }; ts: number }>();
+const SETTINGS_CACHE = new Map<
+    string,
+    { data: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown; budget_thresholds?: unknown }; ts: number }
+>();
 
 function isPaymentMethod(value: string): value is PaymentMethod {
     return (ALL_PAYMENT_METHODS as readonly string[]).includes(value);
@@ -145,6 +148,27 @@ function parseSavedFilters(value: unknown): SavedFilter[] {
             };
         })
         .filter((item): item is SavedFilter => Boolean(item));
+}
+
+function parseBudgetThresholds(value: unknown): Record<string, number[]> {
+    if (!Array.isArray(value)) return {};
+    const map = new Map<string, number[]>();
+    value.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        const record = entry as { categoryId?: unknown; levels?: unknown };
+        if (typeof record.categoryId !== 'string' || !Array.isArray(record.levels)) return;
+        const levels = record.levels
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0 && n <= 100)
+            .map((n) => Math.round(n));
+        if (levels.length) {
+            map.set(
+                record.categoryId,
+                Array.from(new Set(levels)).sort((a, b) => a - b),
+            );
+        }
+    });
+    return Object.fromEntries(map.entries());
 }
 
 function parseCategoryParams(params: SearchParams, key: string) {
@@ -358,14 +382,14 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const settingsStart = PERF_ENABLED ? getTimeMs() : undefined;
     const now = getTimeMs();
     const cachedSettings = SETTINGS_CACHE.get(user.id);
-    let settingsData: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown } | null = null;
+    let settingsData: { currency_code: string | null; display_name: string | null; pay_cycle_start_day: number | null; saved_filters: unknown; budget_thresholds?: unknown } | null = null;
 
     if (cachedSettings && now - cachedSettings.ts < SETTINGS_CACHE_TTL_MS) {
         settingsData = cachedSettings.data;
     } else {
         const { data, error } = await supabase
             .from('user_settings')
-            .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
+            .select('currency_code, display_name, pay_cycle_start_day, saved_filters, budget_thresholds')
             .eq('user_id', user!.id)
             .maybeSingle();
 
@@ -377,12 +401,12 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             const { data: insertedSettings } = await supabase
                 .from('user_settings')
                 .upsert(
-                    { user_id: user!.id, currency_code: 'USD', pay_cycle_start_day: 1 },
+                    { user_id: user!.id, currency_code: 'USD', pay_cycle_start_day: 1, budget_thresholds: [] },
                     { onConflict: 'user_id' },
                 )
-                .select('currency_code, display_name, pay_cycle_start_day, saved_filters')
+                .select('currency_code, display_name, pay_cycle_start_day, saved_filters, budget_thresholds')
                 .maybeSingle();
-            settingsData = insertedSettings ?? { currency_code: 'USD', display_name: null, pay_cycle_start_day: 1, saved_filters: [] };
+            settingsData = insertedSettings ?? { currency_code: 'USD', display_name: null, pay_cycle_start_day: 1, saved_filters: [], budget_thresholds: [] };
         } else {
             settingsData = data;
         }
@@ -395,6 +419,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     const currencyCode = settingsData?.currency_code ?? 'USD';
     const payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
     const savedFilters = parseSavedFilters(settingsData?.saved_filters);
+    const budgetThresholds = parseBudgetThresholds(settingsData?.budget_thresholds);
 
     const today = new Date();
     const defaultCycleKey = currentCycleKeyForDate(today, payCycleStartDay);
@@ -669,6 +694,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         cycleKey={defaultCycleKey}
                         cycleRangeStart={defaultCycleRange.startDate}
                         categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+                        thresholdsByCategory={budgetThresholds}
+                        notify={false}
                     />
                 </Suspense>
 

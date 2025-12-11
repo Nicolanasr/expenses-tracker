@@ -2,11 +2,7 @@ import { getTopBudgetUsage } from "@/lib/budgets";
 import { createSupabaseServerComponentClient } from "@/lib/supabase/server";
 import { insertNotification } from "@/lib/notifications";
 
-const BUDGET_THRESHOLD_LEVELS = [
-	{ value: 50, label: "50%" },
-	{ value: 75, label: "75%" },
-	{ value: 90, label: "90%" },
-];
+const DEFAULT_THRESHOLD_LEVELS = [50, 75, 90];
 
 function formatMonthLabel(date: Date) {
 	return date.toLocaleString("en-US", { month: "short", year: "numeric" });
@@ -20,15 +16,32 @@ type Props = {
 	cycleKey: string;
 	cycleRangeStart: Date;
 	categories: CategoryLite[];
+	thresholdsByCategory?: Record<string, number[]>;
+	notify?: boolean;
 };
 
-export async function BudgetHealthSection({ userId, userEmail, cycleKey, cycleRangeStart, categories }: Props) {
+export async function BudgetHealthSection({
+	userId,
+	userEmail,
+	cycleKey,
+	cycleRangeStart,
+	categories,
+	thresholdsByCategory,
+	notify = true,
+}: Props) {
 	const supabase = await createSupabaseServerComponentClient();
 	const budgetUsage = await getTopBudgetUsage(cycleKey, 50);
 	const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
 	const budgetCycleLabel = formatMonthLabel(cycleRangeStart);
 
-	if (userId) {
+	const getThresholds = (categoryId: string | null | undefined) => {
+		const custom = categoryId ? thresholdsByCategory?.[categoryId] : undefined;
+		const arr = (custom ?? DEFAULT_THRESHOLD_LEVELS).map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0 && n <= 100);
+		const unique = Array.from(new Set(arr.map((n) => Math.round(n)))).sort((a, b) => a - b);
+		return unique.length ? unique : DEFAULT_THRESHOLD_LEVELS;
+	};
+
+	if (notify && userId) {
 		let triggeredBudgetKeys = new Set<string>();
 		const { data: existingBudgetNotifications } = await supabase
 			.from("notifications")
@@ -54,19 +67,23 @@ export async function BudgetHealthSection({ userId, userEmail, cycleKey, cycleRa
 			if (!categoryId) continue;
 			const pct = Math.round(budget.used_pct ?? 0);
 			const categoryName = categoryNameById.get(categoryId) ?? "This category";
-			for (const threshold of BUDGET_THRESHOLD_LEVELS) {
-				const key = `${categoryId}:${threshold.value}:${cycleKey}`;
-				if (pct >= threshold.value && !triggeredBudgetKeys.has(key)) {
-					await insertNotification(supabase, userId, {
-						title: `${categoryName} budget ${threshold.label} reached`,
-						body: `${categoryName} has used ${pct}% of its ${budgetCycleLabel} budget.`,
-						sendEmail: true,
-						userEmail: userEmail ?? undefined,
-						type: "budget_threshold",
-						metadata: { categoryId, level: threshold.value, month: cycleKey },
-					});
-					triggeredBudgetKeys.add(key);
-				}
+			const levels = getThresholds(categoryId);
+			const eligible = levels.filter((value) => {
+				const key = `${categoryId}:${value}:${cycleKey}`;
+				return pct >= value && !triggeredBudgetKeys.has(key);
+			});
+			const highest = eligible.length ? Math.max(...eligible) : null;
+			if (highest !== null) {
+				const key = `${categoryId}:${highest}:${cycleKey}`;
+				await insertNotification(supabase, userId, {
+					title: `${categoryName} budget ${highest}% reached`,
+					body: `${categoryName} has used ${pct}% of its ${budgetCycleLabel} budget.`,
+					sendEmail: true,
+					userEmail: userEmail ?? undefined,
+					type: "budget_threshold",
+					metadata: { categoryId, level: highest, month: cycleKey },
+				});
+				triggeredBudgetKeys.add(key);
 			}
 		}
 	}

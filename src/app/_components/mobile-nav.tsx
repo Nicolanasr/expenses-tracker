@@ -10,61 +10,61 @@ import Image from 'next/image';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notifications/actions';
 
 function formatRelativeTime(timestamp: string) {
-	const now = Date.now();
-	const value = new Date(timestamp).getTime();
-	if (Number.isNaN(value)) return '';
-	const diffSeconds = Math.max(0, Math.floor((now - value) / 1000));
+    const now = Date.now();
+    const value = new Date(timestamp).getTime();
+    if (Number.isNaN(value)) return '';
+    const diffSeconds = Math.max(0, Math.floor((now - value) / 1000));
 
-	const intervals: [number, string][] = [
-		[60, 'second'],
-		[60, 'minute'],
-		[24, 'hour'],
-		[7, 'day'],
-		[4.34524, 'week'],
-		[12, 'month'],
-		[Number.POSITIVE_INFINITY, 'year'],
-	];
+    const intervals: [number, string][] = [
+        [60, 'second'],
+        [60, 'minute'],
+        [24, 'hour'],
+        [7, 'day'],
+        [4.34524, 'week'],
+        [12, 'month'],
+        [Number.POSITIVE_INFINITY, 'year'],
+    ];
 
-	let count = diffSeconds;
-	let unit = 'second';
+    let count = diffSeconds;
+    let unit = 'second';
 
-	for (let i = 0; i < intervals.length; i++) {
-		const [threshold, name] = intervals[i];
-		if (count < threshold || i === intervals.length - 1) {
-			unit = name;
-			break;
-		}
-		count = Math.floor(count / threshold);
-	}
+    for (let i = 0; i < intervals.length; i++) {
+        const [threshold, name] = intervals[i];
+        if (count < threshold || i === intervals.length - 1) {
+            unit = name;
+            break;
+        }
+        count = Math.floor(count / threshold);
+    }
 
-	if (count <= 1 && unit === 'second') return 'just now';
-	return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
+    if (count <= 1 && unit === 'second') return 'just now';
+    return `${count} ${unit}${count === 1 ? '' : 's'} ago`;
 }
 
 export type NotificationItem = {
-	id: string;
-	title: string;
-	body: string | null;
-	type: 'recurring_due' | 'recurring_logged' | 'budget_threshold' | string;
-	status: 'unread' | 'read';
-	created_at: string;
-	metadata?: Record<string, unknown> | null;
+    id: string;
+    title: string;
+    body: string | null;
+    type: 'recurring_due' | 'recurring_logged' | 'budget_threshold' | string;
+    status: 'unread' | 'read';
+    created_at: string;
+    metadata?: Record<string, unknown> | null;
 };
 
 const NAV_ITEMS = [
-	{ href: '/', label: 'Overview' },
-	{ href: '/transactions', label: 'Transactions' },
-	{ href: '/transfers', label: 'Transfers' },
-	{ href: '/categories', label: 'Categories' },
-	{ href: '/budgets', label: 'Budgets' },
-	{ href: '/insights', label: 'Insights' },
-	{ href: '/activity', label: 'Activity' },
+    { href: '/', label: 'Overview' },
+    { href: '/transactions', label: 'Transactions' },
+    { href: '/transfers', label: 'Transfers' },
+    { href: '/categories', label: 'Categories' },
+    { href: '/budgets', label: 'Budgets' },
+    { href: '/insights', label: 'Insights' },
+    { href: '/activity', label: 'Activity' },
 ];
 
 const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
-	recurring_due: 'Recurring due',
-	recurring_logged: 'Recurring logged',
-	budget_threshold: 'Budget alert',
+    recurring_due: 'Recurring due',
+    recurring_logged: 'Recurring logged',
+    budget_threshold: 'Budget alert',
 };
 
 let cachedNotifications: NotificationItem[] | null = null;
@@ -128,13 +128,13 @@ export function MobileNav() {
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex gap-0 items-center">
                         <div>
-                            <Image src="/expenseo-logo-removebg-preview.png" alt='logo' width={50} height={50} className='object-contain' />
+                            <Image src="/expenseo-logo-removebg-preview.png" alt='logo' width={40} height={40} className='object-contain' />
                         </div>
                         <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-indigo-500">
                                 Expenseo
                             </p>
-                            <h1 className="text-lg font-semibold text-slate-900">
+                            <h1 className="text-sm font-semibold text-slate-900 ">
                                 Stay on top of your money
                             </h1>
                         </div>
@@ -155,7 +155,7 @@ export function MobileNav() {
                                 ) : null}
                             </button>
                             {notificationsOpen ? (
-                                <div className="absolute right-0 z-30 mt-2 w-96 rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-lg">
+                                <div className="fixed md:absolute left-1/2 z-30 mt-2 w-[min(92vw,24rem)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-lg sm:left-auto sm:right-0 sm:translate-x-0 sm:w-96">
                                     <div className="mb-2 flex items-center justify-between">
                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notifications</p>
                                         {unreadNotifications > 0 ? (
@@ -169,51 +169,51 @@ export function MobileNav() {
                                             </button>
                                         ) : null}
                                     </div>
-                                    <div className="max-h-72 space-y-2 overflow-auto">
+                                    <div className="max-h-[70vh] space-y-2 overflow-auto">
                                         {isLoading ? (
                                             <p className="text-xs text-slate-500">Loading…</p>
                                         ) : notifications.length === 0 ? (
                                             <p className="text-xs text-slate-500">No notifications yet.</p>
                                         ) : (
-									notifications.slice(0, 8).map((notification) => {
-										const typeLabel = NOTIFICATION_TYPE_LABELS[notification.type] ?? 'Update';
-										return (
-											<div
-												key={notification.id}
-												className={`rounded-xl border px-3 py-2 text-xs ${notification.status === 'unread'
-													? 'border-indigo-200 bg-indigo-50/70'
-													: 'border-slate-100'
-													}`}
-											>
-												<div className="flex items-center justify-between gap-2">
-														<p className="font-semibold text-slate-900">{notification.title}</p>
-														<span className="text-[0.7rem] text-slate-400">
-															{formatRelativeTime(notification.created_at)}
-														</span>
-													</div>
-												{notification.body ? (
-													<p className="mt-1 text-slate-600">{notification.body}</p>
-												) : null}
-												<div className="mt-1 flex items-center gap-2">
-													<span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.65rem] font-semibold text-slate-600">
-														{typeLabel}
-													</span>
-													{notification.status === 'unread' ? (
-														<button
-															type="button"
-															onClick={() => handleMarkRead(notification.id)}
-															disabled={isPending}
-															className="text-[0.65rem] font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-														>
-															{isPending ? 'Working…' : 'Mark read'}
-														</button>
-													) : (
-														<span className="text-[0.65rem] text-slate-400">Read</span>
-													)}
-												</div>
-											</div>
-										);
-									})
+                                            notifications.slice(0, 8).map((notification) => {
+                                                const typeLabel = NOTIFICATION_TYPE_LABELS[notification.type] ?? 'Update';
+                                                return (
+                                                    <div
+                                                        key={notification.id}
+                                                        className={`rounded-xl border px-3 py-2 text-xs shadow-sm ${notification.status === 'unread'
+                                                            ? 'border-indigo-100 bg-indigo-50/70'
+                                                            : 'border-slate-100 bg-white'
+                                                            }`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className="font-semibold text-slate-900">{notification.title}</p>
+                                                            <span className="text-[0.7rem] text-slate-400">
+                                                                {formatRelativeTime(notification.created_at)}
+                                                            </span>
+                                                        </div>
+                                                        {notification.body ? (
+                                                            <p className="mt-1 text-slate-600">{notification.body}</p>
+                                                        ) : null}
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.65rem] font-semibold text-slate-600">
+                                                                {typeLabel}
+                                                            </span>
+                                                            {notification.status === 'unread' ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleMarkRead(notification.id)}
+                                                                    disabled={isPending}
+                                                                    className="text-[0.65rem] font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {isPending ? 'Working…' : 'Mark read'}
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-[0.65rem] text-slate-400">Read</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
                                         )}
                                     </div>
                                 </div>

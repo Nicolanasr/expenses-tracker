@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { processBudgetThresholds } from "@/lib/budgets";
 
 export type FormState = {
 	ok: boolean;
@@ -256,6 +257,10 @@ export async function createTransaction(_: unknown, formData: FormData) {
 
 		insertedTransactionId = insertedTransaction?.id ?? null;
 	}
+	// Fire budget threshold alerts for expenses
+	if (category.type === "expense") {
+		processBudgetThresholds(supabase, user.id, user.email).catch((err) => console.error("[budget-thresholds] create", err));
+	}
 
 	if (isRecurring) {
 		const nextRun = firstRun;
@@ -402,6 +407,10 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 			ok: false,
 			errors: { amount: ["This transaction changed elsewhere. Refresh and try again."] },
 		};
+	}
+
+	if (category.type === "expense") {
+		processBudgetThresholds(supabase, user.id, user.email).catch((err) => console.error("[budget-thresholds] update", err));
 	}
 
 	revalidatePath("/");

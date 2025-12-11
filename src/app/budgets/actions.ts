@@ -192,3 +192,52 @@ export async function deleteMonthBudgetsAction(formData: FormData) {
 	revalidatePath("/budgets");
 	return { ok: true };
 }
+
+const thresholdsSchema = z.object({
+	items: z.array(
+		z.object({
+			categoryId: z.string().uuid(),
+			levels: z.array(z.number().min(1).max(100)).max(5),
+		}),
+	),
+});
+
+export async function saveBudgetThresholdsAction(formData: FormData) {
+	const payloadRaw = formData.get("payload");
+	if (typeof payloadRaw !== "string") {
+		throw new Error("Invalid payload");
+	}
+
+	const parsed = thresholdsSchema.safeParse(JSON.parse(payloadRaw));
+	if (!parsed.success) {
+		throw parsed.error;
+	}
+
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
+
+	if (error || !user) {
+		throw error ?? new Error("You must be signed in.");
+	}
+
+	const sanitized = parsed.data.items
+		.map((item) => ({
+			categoryId: item.categoryId,
+			levels: Array.from(new Set(item.levels.map((v) => Math.min(100, Math.max(1, Math.round(v)))))).sort((a, b) => a - b),
+		}))
+		.filter((item) => item.levels.length > 0);
+
+	await supabase.from("user_settings").upsert(
+		{
+			user_id: user.id,
+			budget_thresholds: sanitized as unknown as Json,
+		},
+		{ onConflict: "user_id" },
+	);
+
+	revalidatePath("/budgets");
+	revalidatePath("/");
+}
