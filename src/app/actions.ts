@@ -4,7 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createSupabaseServerActionClient } from "@/lib/supabase/server";
+import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 import { processBudgetThresholds } from "@/lib/budgets";
 
 export type FormState = {
@@ -568,8 +568,8 @@ export async function bulkDeleteTransactions(ids: string[]) {
 				user_id: user.id,
 				table_name: "transactions",
 				record_id: row.id,
-				action: "delete",
-				snapshot: row as any,
+				action: "delete" as const,
+				snapshot: row as Json,
 			})),
 		);
 	}
@@ -627,8 +627,8 @@ export async function bulkUpdateTransactionCategory(ids: string[], categoryId: s
 				user_id: user.id,
 				table_name: "transactions",
 				record_id: row.id,
-				action: "update",
-				snapshot: { ...row, category_id: categoryId } as any,
+				action: "update" as const,
+				snapshot: { ...row, category_id: categoryId } as Json,
 			})),
 		);
 	}
