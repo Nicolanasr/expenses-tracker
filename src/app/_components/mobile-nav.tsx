@@ -57,6 +57,7 @@ const NAV_ITEMS = [
 	{ href: '/transfers', label: 'Transfers' },
 	{ href: '/categories', label: 'Categories' },
 	{ href: '/budgets', label: 'Budgets' },
+	{ href: '/insights', label: 'Insights' },
 	{ href: '/activity', label: 'Activity' },
 ];
 

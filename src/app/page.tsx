@@ -617,6 +617,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                     summaryInterval={summaryInterval}
                 />
 
+
                 <Suspense fallback={<div className="h-28 rounded-2xl border border-slate-200 bg-white" />}>
                     {/* Summary cards intentionally streamed; using existing DashboardSummaryCards component */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
