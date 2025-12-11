@@ -626,7 +626,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         <div className="min-h-screen bg-slate-50">
             <MobileNav />
 
-            <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 py-6">
+            <main className="page-shell mx-auto flex w-full max-w-5xl flex-col gap-6 py-6">
                 <DashboardFilters
                     categories={categoryOptionsForFilters}
                     accounts={accountOptionsForFilters}

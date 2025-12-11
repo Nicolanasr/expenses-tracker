@@ -429,7 +429,7 @@ export function TransactionItem({
     };
 
     return (
-        <article className="rounded-3xl border-slate-200 bg-white pl-0! p-4 sm:p-5" onClick={handleContainerClick}>
+        <article className="rounded-3xl border-slate-200 bg-white p-4 sm:p-5" onClick={handleContainerClick}>
             {enableEditing && isEditing ? (
                 <TransactionEditForm
                     transaction={transaction}

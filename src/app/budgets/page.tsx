@@ -80,13 +80,13 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
     const thresholdsMap = Object.fromEntries(
         Array.isArray(settingsData?.budget_thresholds)
             ? (settingsData?.budget_thresholds as { categoryId?: string; levels?: number[] }[])
-                    .filter((item) => typeof item.categoryId === "string" && item.categoryId)
-                    .map((item) => [
-                        item.categoryId as string,
-                        Array.isArray(item.levels)
-                            ? item.levels.filter((n) => typeof n === "number").map((n) => Number(n))
-                            : [],
-                    ])
+                .filter((item) => typeof item.categoryId === "string" && item.categoryId)
+                .map((item) => [
+                    item.categoryId as string,
+                    Array.isArray(item.levels)
+                        ? item.levels.filter((n) => typeof n === "number").map((n) => Number(n))
+                        : [],
+                ])
             : [],
     );
 
@@ -112,7 +112,7 @@ export default async function BudgetsPage({ searchParams }: { searchParams?: Pro
     return (
         <div className="min-h-screen bg-slate-50">
             <MobileNav />
-            <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-6">
+            <main className=" mx-auto flex w-full max-w-3xl flex-col gap-6 py-6">
                 <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-500">Plan ahead</p>

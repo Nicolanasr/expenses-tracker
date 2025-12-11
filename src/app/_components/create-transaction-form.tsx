@@ -277,7 +277,7 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
             ref={formRef}
             action={formAction}
             onSubmit={handleSubmit}
-            className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+            className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm -mx-4"
         >
             <div>
                 <h3 className="text-sm font-semibold text-slate-900">

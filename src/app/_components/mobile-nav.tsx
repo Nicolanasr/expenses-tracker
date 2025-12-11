@@ -124,7 +124,7 @@ export function MobileNav() {
 
     return (
         <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="mx-auto flex max-w-xl flex-col gap-4 px-5 py-4">
+            <div className="mx-auto flex max-w-xl flex-col gap-3 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex gap-0 items-center">
                         <div>
@@ -155,47 +155,47 @@ export function MobileNav() {
                                 ) : null}
                             </button>
                             {notificationsOpen ? (
-                                <div className="fixed md:absolute left-1/2 z-30 mt-2 w-[min(92vw,24rem)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-lg sm:left-auto sm:right-0 sm:translate-x-0 sm:w-96">
-                                    <div className="mb-2 flex items-center justify-between">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notifications</p>
+                                <div className="fixed md:absolute left-1/2 z-30 mt-1 w-[min(94vw,22rem)] -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-lg sm:left-auto sm:right-0 sm:translate-x-0 sm:w-96">
+                                    <div className="mb-1 flex items-center justify-between">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notifications</p>
                                         {unreadNotifications > 0 ? (
                                             <button
                                                 type="button"
                                                 onClick={handleMarkAll}
                                                 disabled={isPending}
-                                                className="text-xs font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                                className="text-[11px] font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                                             >
                                                 {isPending ? 'Marking…' : 'Mark all read'}
                                             </button>
                                         ) : null}
                                     </div>
-                                    <div className="max-h-[70vh] space-y-2 overflow-auto">
+                                    <div className="max-h-[70vh] space-y-1.5 overflow-auto">
                                         {isLoading ? (
-                                            <p className="text-xs text-slate-500">Loading…</p>
+                                            <p className="text-[11px] text-slate-500">Loading…</p>
                                         ) : notifications.length === 0 ? (
-                                            <p className="text-xs text-slate-500">No notifications yet.</p>
+                                            <p className="text-[11px] text-slate-500">No notifications yet.</p>
                                         ) : (
                                             notifications.slice(0, 8).map((notification) => {
                                                 const typeLabel = NOTIFICATION_TYPE_LABELS[notification.type] ?? 'Update';
                                                 return (
                                                     <div
                                                         key={notification.id}
-                                                        className={`rounded-xl border px-3 py-2 text-xs shadow-sm ${notification.status === 'unread'
+                                                        className={`rounded-xl border px-3 py-2 text-[11px] shadow-sm ${notification.status === 'unread'
                                                             ? 'border-indigo-100 bg-indigo-50/70'
                                                             : 'border-slate-100 bg-white'
                                                             }`}
                                                     >
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <p className="font-semibold text-slate-900">{notification.title}</p>
-                                                            <span className="text-[0.7rem] text-slate-400">
+                                                        <div className="flex items-center justify-between gap-1.5">
+                                                            <p className="font-semibold leading-snug text-slate-900">{notification.title}</p>
+                                                            <span className="text-[0.65rem] text-slate-400">
                                                                 {formatRelativeTime(notification.created_at)}
                                                             </span>
                                                         </div>
                                                         {notification.body ? (
-                                                            <p className="mt-1 text-slate-600">{notification.body}</p>
+                                                            <p className="mt-0.5 leading-snug text-slate-600">{notification.body}</p>
                                                         ) : null}
-                                                        <div className="mt-1 flex items-center gap-2">
-                                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.65rem] font-semibold text-slate-600">
+                                                        <div className="mt-1 flex items-center gap-1.5">
+                                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.62rem] font-semibold text-slate-600">
                                                                 {typeLabel}
                                                             </span>
                                                             {notification.status === 'unread' ? (
@@ -203,12 +203,12 @@ export function MobileNav() {
                                                                     type="button"
                                                                     onClick={() => handleMarkRead(notification.id)}
                                                                     disabled={isPending}
-                                                                    className="text-[0.65rem] font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    className="text-[0.62rem] font-semibold text-indigo-600 transition hover:text-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                                                                 >
                                                                     {isPending ? 'Working…' : 'Mark read'}
                                                                 </button>
                                                             ) : (
-                                                                <span className="text-[0.65rem] text-slate-400">Read</span>
+                                                                <span className="text-[0.62rem] text-slate-400">Read</span>
                                                             )}
                                                         </div>
                                                     </div>

@@ -198,7 +198,7 @@ export default function BudgetTable({
                         Add a few categories first so you can set monthly budgets.
                     </p>
                 ) : (
-                    <div className="mt-5 overflow-auto rounded-2xl border border-slate-100">
+                    <div className="mt-5 overflow-auto rounded-2xl border border-slate-100 -mx-5">
                         <table className="w-full text-sm">
                             <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 <tr>

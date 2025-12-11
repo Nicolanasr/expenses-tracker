@@ -194,7 +194,7 @@ export default async function InsightsPage({ searchParams }: { searchParams?: Pr
     return (
         <div className="min-h-screen bg-slate-50">
             <MobileNav />
-            <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-5 py-6">
+            <main className="page-shell mx-auto flex w-full max-w-5xl flex-col gap-6 py-6">
                 <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>

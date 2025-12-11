@@ -30,6 +30,18 @@ body {
 	font-family: Arial, Helvetica, sans-serif;
 }
 
+.page-shell {
+	padding-left: 1rem;
+	padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+	.page-shell {
+		padding-left: 1.25rem;
+		padding-right: 1.25rem;
+	}
+}
+
 .blog-content {
 	max-width: 70ch;
 	color: #0f172a;

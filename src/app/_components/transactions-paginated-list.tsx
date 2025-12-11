@@ -477,7 +477,7 @@ export function TransactionsPaginatedList({
                                             className={`group relative rounded-2xl border border-transparent bg-white transition hover:border-indigo-100 ${isSelected ? 'ring-2 ring-indigo-200' : ''
                                                 }`}
                                         >
-                                            {allowEditing ? (
+                                            {/* {allowEditing ? (
                                                 <div className="absolute left-3 top-3 z-[5]">
                                                     <input
                                                         type="checkbox"
@@ -488,8 +488,8 @@ export function TransactionsPaginatedList({
                                                         aria-label="Select transaction"
                                                     />
                                                 </div>
-                                            ) : null}
-                                            <div className="flex-1 p-1 pl-10 sm:pl-8">
+                                            ) : null} */}
+                                            <div className="flex-1 p-1 ">
                                                 <TransactionItem
                                                     transaction={transaction}
                                                     categories={categories}
