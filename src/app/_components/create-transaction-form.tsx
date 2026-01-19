@@ -8,6 +8,7 @@ import CreatableSelect from 'react-select/creatable';
 import { createTransaction } from '@/app/actions';
 import { PAYMENT_METHOD_LABELS, SELECTABLE_PAYMENT_METHODS, type SelectablePaymentMethod } from '@/lib/payment-methods';
 import { queueTransactionMutation } from '@/lib/outbox-sync';
+import { findCurrency } from '@/lib/currencies';
 
 type Category = {
     id: string;
@@ -23,6 +24,7 @@ type Account = {
     type: string;
     institution?: string | null;
     defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
+    currency_code?: string;
 };
 
 type FormState = {
@@ -82,6 +84,12 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
     const [payeeValue, setPayeeValue] = useState<string>('');
     const [payeeReady, setPayeeReady] = useState(false);
     const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+    const selectedAccount = useMemo(() => accounts.find((a) => a.id === selectedAccountId) ?? null, [accounts, selectedAccountId]);
+    const selectedCurrency = useMemo(
+        () => (selectedAccount?.currency_code ?? accounts[0]?.currency_code ?? 'USD').toUpperCase(),
+        [selectedAccount, accounts],
+    );
+    const selectedSymbol = useMemo(() => findCurrency(selectedCurrency)?.symbol ?? selectedCurrency, [selectedCurrency]);
 
     useEffect(() => {
         if (!state.ok) {
@@ -296,8 +304,8 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                     Amount
                 </label>
                 <div className="flex items-center gap-2">
-                    <span className="rounded-md border border-slate-200 bg-slate-50 px-2 text-sm text-slate-700">
-                        $
+                    <span className="rounded-md border border-slate-200 bg-slate-50 px-2 text-sm font-semibold text-slate-700">
+                        {selectedSymbol}
                     </span>
                     <input
                         id="transaction-amount"
@@ -503,7 +511,7 @@ export function CreateTransactionForm({ categories, accounts, payees = [] }: Pro
                     {/* <option value="">No account</option> */}
                     {accounts.map((account) => (
                         <option key={account.id} value={account.id}>
-                            {account.name}
+                            {account.name} ({account.currency_code ?? 'USD'})
                         </option>
                     ))}
                 </select>

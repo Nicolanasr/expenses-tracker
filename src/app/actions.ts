@@ -157,11 +157,9 @@ export async function createTransaction(_: unknown, formData: FormData) {
 		};
 	}
 
-	const currencyCode = await getUserCurrencyCode(supabase, user.id);
-
 	const [categoriesResponse, accountsResponse] = await Promise.all([
 		supabase.from("categories").select("id, type"),
-		supabase.from("accounts").select("id").eq("user_id", user.id),
+		supabase.from("accounts").select("id, currency_code").eq("user_id", user.id),
 	]);
 
 	if (categoriesResponse.error) {
@@ -206,8 +204,10 @@ export async function createTransaction(_: unknown, formData: FormData) {
 	}
 
 	let accountId: string | undefined;
+	let accountCurrency: string | undefined;
 	if (payload.data.account_id) {
-		const ownsAccount = (accountsResponse.data ?? []).some((account) => account.id === payload.data.account_id);
+		const account = (accountsResponse.data ?? []).find((account) => account.id === payload.data.account_id);
+		const ownsAccount = Boolean(account);
 		if (!ownsAccount) {
 			return {
 				ok: false,
@@ -215,7 +215,9 @@ export async function createTransaction(_: unknown, formData: FormData) {
 			};
 		}
 		accountId = payload.data.account_id;
+		accountCurrency = account?.currency_code ?? undefined;
 	}
+	const currencyCode = accountCurrency ?? (await getUserCurrencyCode(supabase, user.id));
 
 	const isRecurring = payload.data.recurring_enabled === "on";
 	if (isRecurring && !payload.data.recurring_first_run_on) {
@@ -336,7 +338,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 
 	const [categoriesResponse, accountsResponse] = await Promise.all([
 		supabase.from("categories").select("id, type").eq("user_id", user.id),
-		supabase.from("accounts").select("id").eq("user_id", user.id),
+		supabase.from("accounts").select("id, currency_code").eq("user_id", user.id),
 	]);
 
 	if (categoriesResponse.error) {
@@ -361,8 +363,10 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 	}
 
 	let accountId: string | undefined;
+	let accountCurrency: string | undefined;
 	if (payload.data.account_id) {
-		const ownsAccount = (accountsResponse.data ?? []).some((account) => account.id === payload.data.account_id);
+		const account = (accountsResponse.data ?? []).find((account) => account.id === payload.data.account_id);
+		const ownsAccount = Boolean(account);
 		if (!ownsAccount) {
 			return {
 				ok: false,
@@ -370,6 +374,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 			};
 		}
 		accountId = payload.data.account_id;
+		accountCurrency = account?.currency_code ?? undefined;
 	}
 
 	let query = supabase
@@ -383,6 +388,7 @@ export async function updateTransaction(_prevState: FormState, formData: FormDat
 			payee: payload.data.payee ?? null,
 			category_id: payload.data.category_id,
 			type: category.type,
+			currency_code: accountCurrency ?? undefined,
 			updated_at: new Date().toISOString(),
 		})
 		.eq("id", payload.data.id)

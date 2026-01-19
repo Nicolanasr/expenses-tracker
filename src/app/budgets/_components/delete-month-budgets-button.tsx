@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 import { deleteMonthBudgetsAction } from '@/app/budgets/actions';
 
-export function DeleteMonthBudgetsButton({ month }: { month: string }) {
+export function DeleteMonthBudgetsButton({ month, currencyCode }: { month: string; currencyCode: string }) {
     const [isPending, startTransition] = useTransition();
 
     const handleDelete = () => {
@@ -20,6 +20,7 @@ export function DeleteMonthBudgetsButton({ month }: { month: string }) {
         }
         const formData = new FormData();
         formData.append('month', month);
+        formData.append('currency_code', currencyCode);
         startTransition(async () => {
             try {
                 await deleteMonthBudgetsAction(formData);
@@ -36,10 +37,9 @@ export function DeleteMonthBudgetsButton({ month }: { month: string }) {
             type="button"
             onClick={handleDelete}
             disabled={isPending}
-            className="inline-flex items-center justify-center rounded-xl border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-auto mt-auto inline-flex items-center justify-center rounded-xl border border-rose-200 px-3 py-1.5 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
             {isPending ? 'Removing…' : `Delete ${month} budgets`}
         </button>
     );
 }
-

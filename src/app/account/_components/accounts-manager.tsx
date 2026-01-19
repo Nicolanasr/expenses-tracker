@@ -1,9 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { HiOutlineBanknotes, HiOutlineTrash, HiOutlinePencilSquare } from "react-icons/hi2";
+import Select from "react-select";
 
 import { createAccountAction, deleteAccountAction, updateAccountAction, type AccountFormState } from "@/app/account/actions";
+import { CURRENCY_OPTIONS } from "@/lib/currencies";
 
 const ACCOUNT_TYPES = [
     { value: 'cash', label: 'Cash' },
@@ -22,6 +24,7 @@ type Account = {
     startingBalance: number;
     balance: number;
     defaultPaymentMethod?: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
+    currency_code?: string;
 };
 
 const INITIAL_STATE: AccountFormState = { ok: false };
@@ -29,6 +32,19 @@ const INITIAL_STATE: AccountFormState = { ok: false };
 export function AccountsManager({ accounts }: { accounts: Account[] }) {
     const [state, formAction] = useActionState<AccountFormState, FormData>(createAccountAction, INITIAL_STATE);
     const [deleteState, deleteAction] = useActionState<AccountFormState, FormData>(deleteAccountAction, INITIAL_STATE);
+    const [currency, setCurrency] = useState(() => (accounts[0]?.currency_code ?? "USD").toUpperCase());
+    const [editCurrencies, setEditCurrencies] = useState<Record<string, string>>({});
+
+    const currencyOptions = useMemo(
+        () =>
+            CURRENCY_OPTIONS.map((c) => ({
+                value: c.code,
+                label: `${c.symbol} — ${c.code} — ${c.label}`,
+            })),
+        [],
+    );
+    const optionFor = (code?: string) => currencyOptions.find((opt) => opt.value === (code ?? "").toUpperCase()) ?? currencyOptions[0];
+
     const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
     const [editState, editAction] = useActionState<AccountFormState, FormData>(
         async (_prev, formData) => {
@@ -76,6 +92,19 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
                                 </option>
                             ))}
                         </select>
+                    </div>
+                    <div className="grid gap-2">
+                        <label className="text-sm font-semibold text-slate-900">Currency</label>
+                        <Select
+                            options={currencyOptions}
+                            value={optionFor(currency)}
+                            onChange={(option) => setCurrency(option?.value ?? currency)}
+                            classNamePrefix="currency-select"
+                            isSearchable
+                            className="text-sm"
+                        />
+                        <input type="hidden" name="currency_code" value={currency} />
+                        {state.errors?.currency_code?.length ? <p className="text-xs text-red-500">{state.errors.currency_code[0]}</p> : null}
                     </div>
                     <div className="grid gap-2">
                     <label className="text-sm font-semibold text-slate-900">Starting balance</label>
@@ -140,7 +169,9 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
                                     </span>
                                     <div>
                                         <p className="text-base font-semibold text-slate-900">{account.name}</p>
-                                        <p className="text-xs uppercase tracking-wide text-slate-500">{account.type}</p>
+                                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                                            {account.type} · {account.currency_code ?? 'USD'}
+                                        </p>
                                         {account.institution ? (
                                             <p className="text-xs text-slate-500">{account.institution}</p>
                                         ) : null}
@@ -163,17 +194,35 @@ export function AccountsManager({ accounts }: { accounts: Account[] }) {
                                                 ) : null}
                                             </div>
                                             <div className="grid gap-2 sm:grid-cols-2">
-                                                <select
-                                                    name="type"
-                                                    defaultValue={account.type}
-                                                    className="h-9 rounded-lg border border-slate-300 px-2 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
-                                                >
+                                            <select
+                                                name="type"
+                                                defaultValue={account.type}
+                                                className="h-9 rounded-lg border border-slate-300 px-2 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                                            >
                                                     {ACCOUNT_TYPES.map((option) => (
                                                         <option key={option.value} value={option.value}>
                                                             {option.label}
                                                         </option>
                                                     ))}
                                                 </select>
+                                                <Select
+                                                    options={currencyOptions}
+                                                    value={optionFor(editCurrencies[account.id] ?? account.currency_code ?? "USD")}
+                                                    onChange={(option) =>
+                                                        setEditCurrencies((prev) => ({
+                                                            ...prev,
+                                                            [account.id]: option?.value ?? account.currency_code ?? "USD",
+                                                        }))
+                                                    }
+                                                    classNamePrefix="currency-select"
+                                                    isSearchable
+                                                    className="text-sm"
+                                                />
+                                                <input
+                                                    type="hidden"
+                                                    name="currency_code"
+                                                    value={editCurrencies[account.id] ?? account.currency_code ?? "USD"}
+                                                />
                                                 <input
                                                     type="number"
                                                     name="starting_balance"

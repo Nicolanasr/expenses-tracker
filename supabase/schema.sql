@@ -23,6 +23,7 @@ create table if not exists public.accounts (
   color text,
   starting_balance numeric(12, 2) not null default 0,
   default_payment_method text check (default_payment_method in ('cash','card','transfer','bank_transfer','account_transfer','other')),
+  currency_code text not null default 'USD',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
@@ -67,11 +68,12 @@ create table if not exists public.budgets (
   user_id uuid not null references auth.users (id) on delete cascade,
   category_id uuid not null references public.categories (id) on delete cascade,
   month text not null check (month ~ '^[0-9]{4}-[0-9]{2}$'),
+  currency_code text not null default 'USD',
+  label text not null default 'Budget',
   amount_cents bigint not null check (amount_cents >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  deleted_at timestamptz,
-  unique (user_id, category_id, month)
+  deleted_at timestamptz
 );
 
 create index if not exists transactions_occurred_on_idx
@@ -91,14 +93,35 @@ create index if not exists accounts_user_id_idx
   on public.accounts (user_id);
 create index if not exists accounts_user_deleted_idx
   on public.accounts (user_id, deleted_at);
+create index if not exists accounts_currency_idx
+  on public.accounts (user_id, currency_code);
 create unique index if not exists categories_user_id_name_key
   on public.categories (user_id, name);
 create index if not exists user_settings_currency_code_idx
   on public.user_settings (currency_code);
 create index if not exists budgets_user_month_idx
   on public.budgets (user_id, month);
+create index if not exists budgets_user_month_currency_idx
+  on public.budgets (user_id, month, currency_code);
 create index if not exists budgets_user_deleted_idx
   on public.budgets (user_id, deleted_at);
+create unique index if not exists budgets_user_month_currency_category_uniq
+  on public.budgets (user_id, month, currency_code, category_id);
+
+-- Join table to link budgets to multiple accounts (same currency).
+create table if not exists public.budget_accounts (
+  budget_id uuid references public.budgets (id) on delete cascade,
+  account_id uuid references public.accounts (id) on delete cascade,
+  user_id uuid not null,
+  month text not null,
+  currency_code text not null,
+  category_id uuid not null,
+  primary key (budget_id, account_id)
+);
+create index if not exists budget_accounts_account_idx
+  on public.budget_accounts (account_id);
+create unique index if not exists budget_accounts_unique_scope_idx
+  on public.budget_accounts (user_id, month, currency_code, category_id, account_id);
 create index if not exists transactions_user_month_category_idx
   on public.transactions (user_id, occurred_on, category_id)
   where type = 'expense';
@@ -322,20 +345,31 @@ $$;
 create or replace view public.v_budget_summary as
 with budget_cycles as (
   select
+    b.id as budget_id,
+    b.label,
     b.user_id,
     b.month,
     b.category_id,
+    b.currency_code,
     b.amount_cents,
+    coalesce(array_agg(distinct ba.account_id) filter (where ba.account_id is not null), '{}') as account_ids,
     u.pay_cycle_start_day,
     date_trunc('month', to_date(b.month || '-01', 'YYYY-MM-DD')) as base_month
   from public.budgets b
   join public.user_settings u on u.user_id = b.user_id
+  left join public.budget_accounts ba on ba.budget_id = b.id
+  where b.deleted_at is null
+  group by b.user_id, b.month, b.category_id, b.currency_code, b.amount_cents, u.pay_cycle_start_day, b.id
 ),
 cycle_ranges as (
   select
+    bc.budget_id,
+    bc.label,
     bc.user_id,
     bc.month,
     bc.category_id,
+    bc.currency_code,
+    bc.account_ids,
     bc.amount_cents,
     (
       bc.base_month
@@ -349,9 +383,13 @@ cycle_ranges as (
   from budget_cycles bc
 )
 select
+  cr.budget_id,
+  cr.label,
   cr.user_id,
   cr.month,
   cr.category_id,
+  cr.currency_code,
+  cr.account_ids,
   cr.amount_cents as budget_cents,
   coalesce((
     select sum((t.amount * 100)::bigint)
@@ -359,6 +397,16 @@ select
     where t.user_id = cr.user_id
       and t.type = 'expense'
       and t.category_id = cr.category_id
+      and t.currency_code = cr.currency_code
+      and t.deleted_at is null
+      and (
+        not exists (select 1 from public.budget_accounts ba where ba.budget_id = cr.budget_id)
+        or exists (
+          select 1 from public.budget_accounts ba
+          where ba.budget_id = cr.budget_id
+            and ba.account_id = t.account_id
+        )
+      )
       and t.occurred_on >= cr.cycle_start
       and t.occurred_on < cr.cycle_end
   ), 0) as spent_cents
@@ -367,7 +415,11 @@ from cycle_ranges cr;
 -- RPC to fetch budget summary for a month (scoped via RLS).
 create or replace function public.rpc_get_budget_summary(p_month text)
 returns table (
+  budget_id uuid,
+  label text,
   category_id uuid,
+  currency_code text,
+  account_ids uuid[],
   budget_cents bigint,
   spent_cents bigint,
   remaining_cents bigint,
@@ -377,7 +429,11 @@ language sql
 stable
 as $$
   select
+    v.budget_id,
+    v.label,
     v.category_id,
+    v.currency_code,
+    v.account_ids,
     v.budget_cents,
     v.spent_cents,
     (v.budget_cents - v.spent_cents) as remaining_cents,

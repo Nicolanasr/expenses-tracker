@@ -71,6 +71,7 @@ type AccountRow = {
     institution: string | null;
     starting_balance: number;
     default_payment_method: 'cash' | 'card' | 'transfer' | 'bank_transfer' | 'account_transfer' | 'other' | null;
+    currency_code?: string | null;
 };
 
 type AccountOption = {
@@ -416,7 +417,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
 
     perfLog('settings', settingsStart);
 
-    const currencyCode = settingsData?.currency_code ?? 'USD';
+    const currencyParam = parseParam(resolvedSearchParams, 'currency');
+    let currencyCode = (currencyParam ?? settingsData?.currency_code ?? 'USD').toUpperCase();
     const payCycleStartDay = settingsData?.pay_cycle_start_day ?? 1;
     const savedFilters = parseSavedFilters(settingsData?.saved_filters);
     const budgetThresholds = parseBudgetThresholds(settingsData?.budget_thresholds);
@@ -457,7 +459,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .order('name', { ascending: true }),
         supabase
             .from('accounts')
-            .select('id, name, type, institution, starting_balance, default_payment_method')
+            .select('id, name, type, institution, starting_balance, default_payment_method, currency_code')
             .eq('user_id', user!.id)
             .is('deleted_at', null)
             .order('name', { ascending: true }),
@@ -480,8 +482,9 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                 user_id: user!.id,
                 name: 'Main account',
                 type: 'checking',
+                currency_code: currencyCode,
             })
-            .select('id, name, type, institution, starting_balance, default_payment_method')
+            .select('id, name, type, institution, starting_balance, default_payment_method, currency_code')
             .single();
         if (insertAccountError) {
             console.error(insertAccountError);
@@ -495,7 +498,20 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         .map((name) => nameToId.get(name))
         .filter((value): value is string => Boolean(value));
 
-    const accountOptionsForFilters = accounts.map((account) => ({
+    const availableCurrencies = Array.from(
+        new Set(
+            (accounts ?? [])
+                .map((a) => a.currency_code)
+                .filter((c): c is string => Boolean(c))
+                .map((c) => c.toUpperCase()),
+        ),
+    );
+    if (availableCurrencies.length && !availableCurrencies.includes(currencyCode)) {
+        currencyCode = availableCurrencies[0];
+    }
+
+    const accountsForCurrency = accounts.filter((account) => (account.currency_code ?? '').toUpperCase() === currencyCode);
+    const accountOptionsForFilters = accountsForCurrency.map((account) => ({
         id: account.id,
         name: account.name,
         type: account.type,
@@ -503,11 +519,12 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
     }));
     const accountNameToId = new Map(accountOptionsForFilters.map((account) => [account.name, account.id]));
-    const selectedAccountId = accountParam
+    const selectedAccountIdRaw = accountParam
         ? accountOptionsForFilters.some((account) => account.id === accountParam)
             ? accountParam
             : accountNameToId.get(accountParam) ?? null
         : null;
+    const selectedAccountId = selectedAccountIdRaw && accountOptionsForFilters.some((a) => a.id === selectedAccountIdRaw) ? selectedAccountIdRaw : null;
 
     const buildTransactionsQuery = (rangeStart: string, rangeEnd: string) => {
         let query = supabase
@@ -530,6 +547,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
       `,
             )
             .eq('user_id', user!.id)
+            .eq('currency_code', currencyCode)
             .is('deleted_at', null)
             .gte('occurred_on', rangeStart)
             .lte('occurred_on', rangeEnd);
@@ -558,6 +576,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             .from('transactions')
             .select('account_id, amount, type')
             .eq('user_id', user!.id)
+            .eq('currency_code', currencyCode)
             .is('deleted_at', null)
             .not('account_id', 'is', null),
     ]);
@@ -603,8 +622,22 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         search: search ?? undefined,
         sort: 'recent',
     };
+    const currencyOptions = availableCurrencies.length ? availableCurrencies : [currencyCode];
+    const buildCurrencyUrl = (code: string) => {
+        const params = new URLSearchParams();
+        Object.entries(resolvedSearchParams ?? {}).forEach(([key, value]) => {
+            if (!value) return;
+            if (Array.isArray(value)) {
+                value.forEach((v) => params.append(key, String(v)));
+            } else {
+                params.set(key, String(value));
+            }
+        });
+        params.set('currency', code);
+        return `/?${params.toString()}`;
+    };
 
-    const accountBalances = accounts.map((account) => {
+    const accountBalances = accountsForCurrency.map((account) => {
         const startingBalance = Number(account.starting_balance ?? 0);
         const delta = accountTransactions.filter((tx) => tx.account_id === account.id).reduce((sum, tx) => {
             const amount = Number(tx.amount ?? 0);
@@ -627,6 +660,29 @@ export default async function OverviewPage({ searchParams }: PageProps) {
             <MobileNav />
 
             <main className="page-shell mx-auto flex w-full max-w-5xl flex-col gap-6 py-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div>
+                        <p className="text-sm font-semibold text-slate-900">Overview</p>
+                        <p className="text-xs text-slate-500">Data filtered by selected currency.</p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 shadow-inner">
+                        <span className="text-xs uppercase tracking-wide text-slate-500">Currency</span>
+                        <div className="flex gap-1">
+                            {currencyOptions.map((code) => (
+                                <a
+                                    key={code}
+                                    href={buildCurrencyUrl(code)}
+                                    className={`rounded-lg px-2 py-1 text-xs font-semibold transition ${
+                                        code === currencyCode ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-indigo-600'
+                                    }`}
+                                >
+                                    {code}
+                                </a>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 <DashboardFilters
                     categories={categoryOptionsForFilters}
                     accounts={accountOptionsForFilters}
@@ -696,6 +752,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
                         categories={categories.map((c) => ({ id: c.id, name: c.name }))}
                         thresholdsByCategory={budgetThresholds}
                         notify={false}
+                        currencyCode={currencyCode}
+                        accountId={selectedAccountId ?? undefined}
                     />
                 </Suspense>
 

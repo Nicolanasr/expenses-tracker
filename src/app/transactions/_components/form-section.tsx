@@ -11,7 +11,7 @@ export async function FormSection({ userId }: Props) {
 	const supabase = await createSupabaseServerComponentClient();
 	const [{ data: categoryRows }, { data: accountRows }, { data: payeeRows }] = await Promise.all([
 		supabase.from("categories").select("id, name, type, icon, color").eq("user_id", userId).is("deleted_at", null).order("name", { ascending: true }),
-		supabase.from("accounts").select("id, name, type, institution, default_payment_method").eq("user_id", userId).is("deleted_at", null).order("name", { ascending: true }),
+		supabase.from("accounts").select("id, name, type, institution, default_payment_method, currency_code").eq("user_id", userId).is("deleted_at", null).order("name", { ascending: true }),
 		supabase.from("transactions").select("payee").eq("user_id", userId).not("payee", "is", null).limit(50),
 	]);
 
@@ -29,6 +29,7 @@ export async function FormSection({ userId }: Props) {
 		type: a.type,
 		institution: a.institution,
 		defaultPaymentMethod: a.default_payment_method,
+		currency_code: a.currency_code ?? "USD",
 	}));
 
 	const payees = Array.from(new Set((payeeRows ?? []).map((p) => p.payee).filter(Boolean))) as string[];

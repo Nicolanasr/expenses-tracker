@@ -60,13 +60,15 @@ export default async function TransfersPage() {
     const [{ data: accountRows, error: accountsError }, { data: txRows, error: txError }] = await Promise.all([
         supabase
             .from('accounts')
-            .select('id, name, type, institution, starting_balance')
+            .select('id, name, type, institution, starting_balance, currency_code')
             .eq('user_id', user.id)
+            .is('deleted_at', null)
             .order('name', { ascending: true }),
         supabase
             .from('transactions')
             .select('account_id, type, amount')
             .eq('user_id', user.id)
+            .is('deleted_at', null)
             .not('account_id', 'is', null),
     ]);
 
@@ -87,6 +89,7 @@ export default async function TransfersPage() {
             id: account.id,
             name: account.name,
             type: account.type,
+            currency_code: account.currency_code ?? 'USD',
             balance: starting + movements,
         };
     });

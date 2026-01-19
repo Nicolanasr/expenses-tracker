@@ -17,6 +17,7 @@ export type Database = {
 					color: string | null;
 					starting_balance: number;
 					default_payment_method: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					currency_code: string;
 					created_at: string;
 					updated_at: string;
 					deleted_at: string | null;
@@ -30,6 +31,7 @@ export type Database = {
 					color?: string | null;
 					starting_balance?: number;
 					default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					currency_code?: string;
 					created_at?: string;
 					updated_at?: string;
 					deleted_at?: string | null;
@@ -43,6 +45,7 @@ export type Database = {
 					color?: string | null;
 					starting_balance?: number;
 					default_payment_method?: "cash" | "card" | "transfer" | "bank_transfer" | "account_transfer" | "other" | null;
+					currency_code?: string;
 					created_at?: string;
 					updated_at?: string;
 					deleted_at?: string | null;
@@ -58,8 +61,12 @@ export type Database = {
 			};
 			budgets: {
 				Row: {
+					label: string;
 					amount_cents: number;
 					category_id: string;
+					currency_code: string;
+					account_id: string | null;
+					account_ids?: string[] | null;
 					created_at: string;
 					id: string;
 					month: string;
@@ -68,8 +75,12 @@ export type Database = {
 					deleted_at: string | null;
 				};
 				Insert: {
+					label?: string;
 					amount_cents: number;
 					category_id: string;
+					currency_code?: string;
+					account_id?: string | null;
+					account_ids?: string[] | null;
 					created_at?: string;
 					id?: string;
 					month: string;
@@ -78,8 +89,12 @@ export type Database = {
 					deleted_at?: string | null;
 				};
 				Update: {
+					label?: string;
 					amount_cents?: number;
 					category_id?: string;
+					currency_code?: string;
+					account_id?: string | null;
+					account_ids?: string[] | null;
 					created_at?: string;
 					id?: string;
 					month?: string;
@@ -99,6 +114,34 @@ export type Database = {
 						columns: ["user_id"];
 						isOneToOne?: true;
 						referencedRelation: "users";
+						referencedColumns: ["id"];
+					}
+				];
+			};
+			budget_accounts: {
+				Row: {
+					budget_id: string;
+					account_id: string;
+				};
+				Insert: {
+					budget_id: string;
+					account_id: string;
+				};
+				Update: {
+					budget_id?: string;
+					account_id?: string;
+				};
+				Relationships: [
+					{
+						foreignKeyName: "budget_accounts_budget_id_fkey";
+						columns: ["budget_id"];
+						referencedRelation: "budgets";
+						referencedColumns: ["id"];
+					},
+					{
+						foreignKeyName: "budget_accounts_account_id_fkey";
+						columns: ["account_id"];
+						referencedRelation: "accounts";
 						referencedColumns: ["id"];
 					}
 				];

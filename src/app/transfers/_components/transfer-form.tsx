@@ -13,6 +13,7 @@ type AccountSummary = {
     name: string;
     type: string;
     balance: number;
+    currency_code: string;
 };
 
 type QuickAction = {
@@ -44,10 +45,13 @@ export function TransferForm({ accounts, quickActions }: Props) {
     const [fromAccountId, setFromAccountId] = useState(accounts[0]?.id ?? '');
     const [toAccountId, setToAccountId] = useState(accounts[1]?.id ?? accounts[0]?.id ?? '');
     const [amount, setAmount] = useState('');
+    const [rate, setRate] = useState('');
     const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [notes, setNotes] = useState('');
 
     const fromAccount = accounts.find((account) => account.id === fromAccountId) ?? null;
+    const toAccount = accounts.find((account) => account.id === toAccountId) ?? null;
+    const crossCurrency = fromAccount && toAccount && fromAccount.currency_code !== toAccount.currency_code;
 
     const insufficient = useMemo(() => {
         const parsed = Number(amount);
@@ -111,7 +115,7 @@ export function TransferForm({ accounts, quickActions }: Props) {
                         >
                             {accounts.map((account) => (
                                 <option key={account.id} value={account.id}>
-                                    {account.name} ({account.balance.toFixed(2)})
+                                    {account.name} ({account.balance.toFixed(2)} {account.currency_code})
                                 </option>
                             ))}
                         </select>
@@ -126,7 +130,7 @@ export function TransferForm({ accounts, quickActions }: Props) {
                         >
                             {accounts.map((account) => (
                                 <option key={account.id} value={account.id}>
-                                    {account.name}
+                                    {account.name} ({account.currency_code})
                                 </option>
                             ))}
                         </select>
@@ -135,6 +139,28 @@ export function TransferForm({ accounts, quickActions }: Props) {
                 {state.message && !state.ok ? (
                     <p className="text-xs text-red-500">{state.message}</p>
                 ) : null}
+                {crossCurrency ? (
+                    <div className="grid gap-1">
+                        <label className="text-sm font-semibold text-slate-900">
+                            Exchange rate ({fromAccount?.currency_code} → {toAccount?.currency_code})
+                        </label>
+                        <input
+                            type="number"
+                            step="0.0001"
+                            min="0"
+                            name="rate"
+                            value={rate}
+                            onChange={(event) => setRate(event.target.value)}
+                            className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-medium text-slate-900 outline-none transition focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-100"
+                            required
+                        />
+                        <p className="text-xs text-slate-500">
+                            Destination will receive amount × rate in {toAccount?.currency_code}.
+                        </p>
+                    </div>
+                ) : (
+                    <input type="hidden" name="rate" value="1" />
+                )}
                 <div className="grid gap-2 md:grid-cols-2">
                     <div className="grid gap-1">
                         <label className="text-sm font-semibold text-slate-900">Amount</label>

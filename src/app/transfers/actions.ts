@@ -12,6 +12,14 @@ const transferSchema = z.object({
         .string({ error: "Amount is required" })
         .transform((val) => Number(val))
         .refine((val) => !Number.isNaN(val) && val > 0, { message: "Enter a valid amount" }),
+    rate: z
+        .string()
+        .optional()
+        .transform((val) => {
+            if (!val) return null;
+            const parsed = Number(val);
+            return Number.isNaN(parsed) ? null : parsed;
+        }),
     occurred_on: z.string().min(1, "Date is required"),
     notes: z
         .string()
@@ -38,6 +46,7 @@ async function fetchAccountBalances(
         .from('accounts')
         .select('id, starting_balance')
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .in('id', accountIds);
 
     if (accountsError) {
@@ -57,6 +66,7 @@ async function fetchAccountBalances(
         .from('transactions')
         .select('account_id, type, amount')
         .eq('user_id', userId)
+        .is('deleted_at', null)
         .in('account_id', accountIds);
 
     if (transactionError) {
@@ -89,6 +99,7 @@ export async function createTransferAction(_prev: TransferFormState, formData: F
         from_account_id: formData.get('from_account_id'),
         to_account_id: formData.get('to_account_id'),
         amount: formData.get('amount'),
+        rate: formData.get('rate'),
         occurred_on: formData.get('occurred_on'),
         notes: formData.get('notes'),
     });
@@ -106,8 +117,9 @@ export async function createTransferAction(_prev: TransferFormState, formData: F
 
     const { data: accountRows, error: accountsError } = await supabase
         .from('accounts')
-        .select('id, name, starting_balance')
+        .select('id, name, starting_balance, currency_code')
         .eq('user_id', user.id)
+        .is('deleted_at', null)
         .in('id', [payload.data.from_account_id, payload.data.to_account_id]);
 
     if (accountsError) {
@@ -139,13 +151,14 @@ export async function createTransferAction(_prev: TransferFormState, formData: F
     }
 
     const occurredOn = payload.data.occurred_on;
-    const { data: settings } = await supabase
-        .from('user_settings')
-        .select('currency_code')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    const currencyCode = settings?.currency_code ?? 'USD';
+    const fromCurrency = fromAccount.currency_code ?? 'USD';
+    const toCurrency = toAccount.currency_code ?? fromCurrency;
+    const isCrossCurrency = fromCurrency !== toCurrency;
+    const rate = isCrossCurrency ? payload.data.rate || null : 1;
+    if (isCrossCurrency && (!rate || rate <= 0)) {
+        return { ok: false, message: 'Provide a valid exchange rate.' };
+    }
+    const creditAmount = isCrossCurrency ? payload.data.amount * (rate as number) : payload.data.amount;
 
     const inserts = [
         {
@@ -158,19 +171,19 @@ export async function createTransferAction(_prev: TransferFormState, formData: F
             account_id: payload.data.from_account_id,
             category_id: null,
             type: 'expense' as const,
-            currency_code: currencyCode,
+            currency_code: fromCurrency,
         },
         {
             user_id: user.id,
-            amount: payload.data.amount,
+            amount: creditAmount,
             occurred_on: occurredOn,
             payment_method: 'account_transfer' as const,
             notes: payload.data.notes ?? null,
-            payee: `Transfer from ${fromAccount.name}`,
+            payee: `Transfer from ${fromAccount.name}${isCrossCurrency ? ` @ rate ${rate}` : ''}`,
             account_id: payload.data.to_account_id,
             category_id: null,
             type: 'income' as const,
-            currency_code: currencyCode,
+            currency_code: toCurrency,
         },
     ];
 

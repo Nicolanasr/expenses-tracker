@@ -18,6 +18,8 @@ type Props = {
 	categories: CategoryLite[];
 	thresholdsByCategory?: Record<string, number[]>;
 	notify?: boolean;
+	currencyCode?: string;
+	accountId?: string;
 };
 
 export async function BudgetHealthSection({
@@ -28,9 +30,11 @@ export async function BudgetHealthSection({
 	categories,
 	thresholdsByCategory,
 	notify = true,
+	currencyCode,
+	accountId,
 }: Props) {
 	const supabase = await createSupabaseServerComponentClient();
-	const budgetUsage = await getTopBudgetUsage(cycleKey, 50);
+	const budgetUsage = await getTopBudgetUsage(cycleKey, 50, currencyCode, accountId);
 	const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
 	const budgetCycleLabel = formatMonthLabel(cycleRangeStart);
 

@@ -5,14 +5,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { insertNotification } from "@/lib/notifications";
 
 export type BudgetRow = {
+	id: string;
+	label: string;
 	category_id: string;
+	currency_code?: string;
+	account_ids?: string[] | null;
 	budget_cents: number;
 	spent_cents: number;
 	remaining_cents: number;
 	used_pct: number;
 };
 
-export async function getBudgetSummary(month: string) {
+export async function getBudgetSummary(month: string, currencyCode?: string) {
 	const supabase = await createSupabaseServerComponentClient();
 	const { data, error } = await supabase.rpc("rpc_get_budget_summary", { p_month: month });
 
@@ -20,10 +24,43 @@ export async function getBudgetSummary(month: string) {
 		throw error;
 	}
 
-	return (data ?? []) as BudgetRow[];
+	type RpcRow = {
+		budget_id?: string;
+		id?: string;
+		label?: string;
+		category_id: string;
+		currency_code?: string;
+		account_ids?: string[] | null;
+		budget_cents?: number;
+		spent_cents?: number;
+		remaining_cents?: number;
+		used_pct?: number;
+	};
+
+	const rows = (data ?? []).map((row: RpcRow) => ({
+		id: row.budget_id ?? row.id,
+		label: row.label ?? "Budget",
+		category_id: row.category_id,
+		currency_code: row.currency_code,
+		account_ids: row.account_ids ?? [],
+		budget_cents: Number(row.budget_cents ?? 0),
+		spent_cents: Number(row.spent_cents ?? 0),
+		remaining_cents: Number(row.remaining_cents ?? 0),
+		used_pct: Number(row.used_pct ?? 0),
+	})) as BudgetRow[];
+
+	return currencyCode ? rows.filter((row) => (row.currency_code ?? "USD") === currencyCode) : rows;
 }
 
-export async function upsertBudget(input: { categoryId: string; month: string; amountCents: number }) {
+export async function upsertBudget(input: {
+	id?: string;
+	categoryId: string;
+	month: string;
+	amountCents: number;
+	currencyCode?: string;
+	accountIds?: string[];
+	label?: string;
+}) {
 	const supabase = await createSupabaseServerActionClient();
 	const {
 		data: { user },
@@ -36,21 +73,36 @@ export async function upsertBudget(input: { categoryId: string; month: string; a
 
 	const { data, error } = await supabase
 		.from("budgets")
-		.upsert(
-			{
-				user_id: user.id,
-				category_id: input.categoryId,
-				month: input.month,
-				amount_cents: input.amountCents,
-				updated_at: new Date().toISOString(),
-			},
-			{ onConflict: "user_id,category_id,month" }
-		)
+		.upsert({
+			id: input.id,
+			user_id: user.id,
+			category_id: input.categoryId,
+			month: input.month,
+			currency_code: input.currencyCode ?? "USD",
+			label: input.label ?? "Budget",
+			amount_cents: input.amountCents,
+			updated_at: new Date().toISOString(),
+		})
 		.select()
 		.single();
 
-	if (error) {
-		throw error;
+	if (error || !data) {
+		throw error ?? new Error("Unable to upsert budget");
+	}
+
+	const budgetId = data.id;
+	// sync account links
+	await supabase.from("budget_accounts").delete().eq("budget_id", budgetId);
+	if (input.accountIds && input.accountIds.length) {
+		const rows = input.accountIds.map((accountId) => ({
+			budget_id: budgetId,
+			account_id: accountId,
+			user_id: user.id,
+			month: input.month,
+			currency_code: input.currencyCode ?? "USD",
+			category_id: input.categoryId,
+		}));
+		await supabase.from("budget_accounts").insert(rows);
 	}
 
 	return data;
@@ -70,9 +122,15 @@ export async function copyBudgets(fromMonth: string, toMonth: string) {
 	return (data ?? 0) as number;
 }
 
-export async function getTopBudgetUsage(month: string, limit = 5) {
-	const rows = await getBudgetSummary(month);
-	return rows
+export async function getTopBudgetUsage(month: string, limit = 5, currency?: string, accountId?: string) {
+	const rows = await getBudgetSummary(month, currency);
+	const filtered = accountId
+		? rows.filter((row) => {
+				const accounts = row.account_ids ?? [];
+				return accounts.length === 0 || accounts.includes(accountId);
+			})
+		: rows;
+	return filtered
 		.slice()
 		.sort((a, b) => (b.used_pct ?? 0) - (a.used_pct ?? 0))
 		.slice(0, limit);
@@ -80,7 +138,7 @@ export async function getTopBudgetUsage(month: string, limit = 5) {
 
 export { toCents, fromCents } from "@/lib/money";
 
-export async function getCategorySpendMap(month: string, payCycleStartDay: number) {
+export async function getCategorySpendMap(month: string, payCycleStartDay: number, currencyCode?: string) {
 	const supabase = await createSupabaseServerComponentClient();
 	const {
 		data: { user },
@@ -94,7 +152,7 @@ export async function getCategorySpendMap(month: string, payCycleStartDay: numbe
 	const { startISO, endISOExclusive } = getCycleRange(month, payCycleStartDay);
 	const { data, error } = await supabase
 		.from("transactions")
-		.select("category_id, amount")
+		.select("category_id, amount, currency_code")
 		.eq("type", "expense")
 		.eq("user_id", user.id)
 		.is("deleted_at", null)
@@ -108,6 +166,7 @@ export async function getCategorySpendMap(month: string, payCycleStartDay: numbe
 	const map: Record<string, number> = {};
 	for (const row of data ?? []) {
 		const id = row.category_id;
+		if (currencyCode && row.currency_code !== currencyCode) return;
 		if (!id) {
 			continue;
 		}

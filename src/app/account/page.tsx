@@ -51,7 +51,7 @@ export default async function AccountPage() {
 
     const { data: accountRows, error: accountsError } = await supabase
         .from('accounts')
-        .select('id, name, type, institution, starting_balance, default_payment_method')
+        .select('id, name, type, institution, starting_balance, default_payment_method, currency_code')
         .eq('user_id', user.id)
         .is('deleted_at', null)
         .order('name', { ascending: true });
@@ -83,6 +83,7 @@ export default async function AccountPage() {
             startingBalance,
             balance: startingBalance + deltas,
             defaultPaymentMethod: account.default_payment_method ? normalizePaymentMethod(account.default_payment_method) : null,
+            currency_code: account.currency_code ?? 'USD',
         };
     });
 

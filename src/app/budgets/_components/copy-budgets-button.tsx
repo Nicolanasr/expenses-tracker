@@ -32,7 +32,7 @@ export function CopyBudgetsButton({
 	const handleCopy = () => {
 		if (!sourceMonth) return;
 		startTransition(async () => {
-			const inserted = await copyBudgetsAction(sourceMonth, month);
+			const inserted = await copyBudgetsAction(sourceMonth, month, currencyCode);
 			setCopied(inserted);
 		});
 	};

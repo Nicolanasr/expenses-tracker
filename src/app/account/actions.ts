@@ -83,6 +83,9 @@ const accountSchema = z.object({
 		.min(2, "Name is too short")
 		.max(48, "Keep the name under 48 characters"),
 	type: z.enum(["cash", "checking", "savings", "credit", "investment", "other"]),
+	currency_code: z
+		.string({ error: "Currency is required" })
+		.length(3, "Use an ISO code like USD"),
 	institution: z
 		.string()
 		.max(80, "Institution name is too long")
@@ -124,6 +127,7 @@ export async function createAccountAction(_prev: AccountFormState, formData: For
 	const payload = accountSchema.safeParse({
 		name: formData.get("name"),
 		type: (formData.get("type") ?? "cash").toString() as "cash",
+		currency_code: (formData.get("currency_code") ?? "USD").toString().toUpperCase(),
 		institution: formData.get("institution"),
 		starting_balance: formData.get("starting_balance"),
 		default_payment_method: formData.get("default_payment_method"),
@@ -139,6 +143,7 @@ export async function createAccountAction(_prev: AccountFormState, formData: For
 	const { error } = await supabase.from("accounts").insert({
 		name: payload.data.name.trim(),
 		type: payload.data.type,
+		currency_code: payload.data.currency_code,
 		institution: payload.data.institution,
 		starting_balance: payload.data.starting_balance,
 		default_payment_method: payload.data.default_payment_method,
@@ -232,6 +237,7 @@ export async function updateAccountAction(_prev: AccountFormState, formData: For
 	const payload = accountSchema.safeParse({
 		name: formData.get("name"),
 		type: (formData.get("type") ?? "cash").toString(),
+		currency_code: (formData.get("currency_code") ?? "USD").toString().toUpperCase(),
 		institution: formData.get("institution"),
 		starting_balance: formData.get("starting_balance"),
 		default_payment_method: formData.get("default_payment_method"),
@@ -249,6 +255,7 @@ export async function updateAccountAction(_prev: AccountFormState, formData: For
 		.update({
 			name: payload.data.name.trim(),
 			type: payload.data.type,
+			currency_code: payload.data.currency_code,
 			institution: payload.data.institution,
 			starting_balance: payload.data.starting_balance,
 			default_payment_method: payload.data.default_payment_method,

@@ -3,55 +3,154 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { copyBudgets, toCents, upsertBudget } from "@/lib/budgets";
+import { toCents, upsertBudget } from "@/lib/budgets";
 import { createSupabaseServerActionClient, type Json } from "@/lib/supabase/server";
 
 const upsertSchema = z.object({
+	id: z.preprocess((val) => (val ? String(val) : undefined), z.string().uuid().optional()),
+	label: z.string().min(1).max(60),
 	categoryId: z.string().uuid(),
-	month: z.string().regex(/^\d{4}-\d{2}$/),
+	month: z.string().regex(/^\d{4}-(0?[1-9]|1[0-2])$/),
 	amount: z.coerce.number().min(0),
+	currencyCode: z.string().length(3),
+	accountIds: z.array(z.string().uuid()).optional(),
 });
 
-export async function upsertBudgetAction(formData: FormData) {
-	const payload = upsertSchema.parse({
-		categoryId: formData.get("categoryId"),
-		month: formData.get("month"),
-		amount: formData.get("amount"),
-	});
-
-	await upsertBudget({
-		categoryId: payload.categoryId,
-		month: payload.month,
-		amountCents: toCents(payload.amount),
-	});
-
-	revalidatePath("/budgets");
+function friendlyBudgetError(error: unknown) {
+	if (error && typeof error === "object") {
+		const err = error as { code?: string; message?: string };
+		if (err.code === "23505") {
+			return "A budget already exists for this category, account, currency, and month.";
+		}
+		if (typeof err.message === "string") {
+			return err.message;
+		}
+	}
+	return "Unable to save budget";
 }
 
-export async function copyBudgetsAction(prevMonth: string, month: string) {
-	const inserted = await copyBudgets(prevMonth, month);
+export async function upsertBudgetAction(formData: FormData) {
+	try {
+		const payload = upsertSchema.parse({
+			id: formData.get("id"),
+			label: formData.get("label") || "Budget",
+			categoryId: formData.get("categoryId"),
+			month: normalizeMonth(formData.get("month")),
+			amount: formData.get("amount"),
+			currencyCode: formData.get("currency_code"),
+			accountIds: formData.getAll("account_ids[]").map(String).filter(Boolean),
+		});
+
+		const saved = await upsertBudget({
+			id: payload.id,
+			categoryId: payload.categoryId,
+			month: normalizeMonth(payload.month),
+			amountCents: toCents(payload.amount),
+			currencyCode: payload.currencyCode,
+			accountIds: payload.accountIds,
+			label: payload.label,
+		});
+
+		revalidatePath("/budgets");
+		return { ok: true, budgetId: saved.id };
+	} catch (error) {
+		const message = friendlyBudgetError(error);
+		return { ok: false, error: message };
+	}
+}
+
+export async function copyBudgetsAction(prevMonth: string, month: string, currencyCode: string) {
+	const supabase = await createSupabaseServerActionClient();
+	const {
+		data: { user },
+		error,
+	} = await supabase.auth.getUser();
+	if (error || !user) {
+		throw error ?? new Error("You must be signed in.");
+	}
+
+	// Fetch source budgets for the same currency
+	const { data: sourceBudgets, error: fetchError } = await supabase
+		.from("budgets")
+		.select("id, label, category_id, amount_cents")
+		.eq("user_id", user.id)
+		.eq("month", prevMonth)
+		.eq("currency_code", currencyCode)
+		.is("deleted_at", null);
+	if (fetchError) throw fetchError;
+
+	if (!sourceBudgets?.length) return 0;
+
+	// Fetch linked accounts
+	const sourceIds = sourceBudgets.map((b) => b.id);
+	const { data: links } = await supabase.from("budget_accounts").select("budget_id, account_id").in("budget_id", sourceIds);
+
+	let insertedCount = 0;
+	for (const budget of sourceBudgets) {
+		const { data: inserted, error: insertError } = await supabase
+			.from("budgets")
+			.insert({
+				user_id: user.id,
+				category_id: budget.category_id,
+				month,
+				currency_code: currencyCode,
+				label: budget.label ?? "Budget",
+				amount_cents: budget.amount_cents,
+				updated_at: new Date().toISOString(),
+			})
+			.select("id")
+			.single();
+		if (insertError) {
+			console.error(insertError);
+			continue;
+		}
+		insertedCount++;
+		const linkedAccounts = (links ?? [])
+			.filter((l) => l.budget_id === budget.id)
+			.map((l) => l.account_id)
+			.filter(Boolean) as string[];
+		if (linkedAccounts.length) {
+			const rows = linkedAccounts.map((accountId) => ({ budget_id: inserted?.id, account_id: accountId }));
+			await supabase.from("budget_accounts").insert(rows);
+		}
+	}
+
 	revalidatePath("/budgets");
-	return inserted;
+	return insertedCount;
 }
 
 const bulkSaveSchema = z.object({
-	month: z.string().regex(/^\d{4}-\d{2}$/),
-	items: z.array(
+	month: z.string().regex(/^\d{4}-(0?[1-9]|1[0-2])$/),
+	currencyCode: z.string().length(3),
+	budgets: z.array(
 		z.object({
+			id: z.preprocess((val) => (val ? String(val) : undefined), z.string().uuid().optional()),
+			label: z.string().min(1).max(60),
 			categoryId: z.string().uuid(),
 			amount: z.number().min(0),
+			accountIds: z.array(z.string().uuid()).optional(),
 		})
 	),
 });
 
 const deleteSchema = z.object({
-	month: z.string().regex(/^\d{4}-\d{2}$/),
-	categoryId: z.string().uuid(),
+	budgetId: z.string().uuid(),
 });
 
 const deleteMonthSchema = z.object({
-	month: z.string().regex(/^\d{4}-\d{2}$/),
+	month: z.string().regex(/^\d{4}-(0?[1-9]|1[0-2])$/),
+	currencyCode: z.string().length(3),
 });
+
+function normalizeMonth(value: unknown) {
+	if (typeof value !== "string") return "";
+	const trimmed = value.trim();
+	const match = /^(\d{4})-(\d{1,2})$/.exec(trimmed);
+	if (match) {
+		return `${match[1]}-${match[2].padStart(2, "0")}`;
+	}
+	return trimmed;
+}
 
 export async function saveBudgetsAction(form: FormData) {
 	const raw = form.get("payload");
@@ -64,23 +163,28 @@ export async function saveBudgetsAction(form: FormData) {
 		throw parsed.error;
 	}
 
-	await Promise.all(
-		parsed.data.items.map((item) =>
-			upsertBudget({
+	for (const item of parsed.data.budgets) {
+		try {
+			await upsertBudget({
+				id: item.id,
+				label: item.label,
 				categoryId: item.categoryId,
-				month: parsed.data.month,
+				month: normalizeMonth(parsed.data.month),
+				currencyCode: parsed.data.currencyCode,
+				accountIds: item.accountIds,
 				amountCents: toCents(item.amount),
-			})
-		)
-	);
+			});
+		} catch (error) {
+			throw new Error(friendlyBudgetError(error));
+		}
+	}
 
 	revalidatePath("/budgets");
 }
 
 export async function deleteBudgetAction(formData: FormData) {
 	const parsed = deleteSchema.safeParse({
-		month: formData.get("month"),
-		categoryId: formData.get("categoryId"),
+		budgetId: formData.get("budget_id"),
 	});
 
 	if (!parsed.success) {
@@ -101,8 +205,7 @@ export async function deleteBudgetAction(formData: FormData) {
 		.from("budgets")
 		.select("*")
 		.eq("user_id", user.id)
-		.eq("category_id", parsed.data.categoryId)
-		.eq("month", parsed.data.month)
+		.eq("id", parsed.data.budgetId)
 		.is("deleted_at", null)
 		.maybeSingle();
 
@@ -111,23 +214,21 @@ export async function deleteBudgetAction(formData: FormData) {
 	}
 
 	if (existing) {
+		await supabase.from("audit_log").insert({
+			user_id: user.id,
+			table_name: "budgets",
+			record_id: existing.id,
+			action: "delete",
+			snapshot: existing as unknown as Json,
+		});
+
 		const deletedAt = new Date().toISOString();
 		const { error: deleteError } = await supabase
 			.from("budgets")
 			.update({ deleted_at: deletedAt, updated_at: deletedAt })
 			.eq("user_id", user.id)
-			.eq("category_id", parsed.data.categoryId)
-			.eq("month", parsed.data.month);
+			.eq("id", parsed.data.budgetId);
 
-		if (!deleteError) {
-			await supabase.from("audit_log").insert({
-				user_id: user.id,
-				table_name: "budgets",
-				record_id: existing.id,
-				action: "delete",
-				snapshot: existing as unknown as Json,
-			});
-		}
 		if (deleteError) {
 			throw deleteError;
 		}
@@ -139,7 +240,9 @@ export async function deleteBudgetAction(formData: FormData) {
 
 export async function deleteMonthBudgetsAction(formData: FormData) {
 	const parsed = deleteMonthSchema.safeParse({
-		month: formData.get("month"),
+		month: normalizeMonth(formData.get("month")),
+		currencyCode: formData.get("currency_code"),
+		accountId: formData.get("account_id"),
 	});
 
 	if (!parsed.success) {
@@ -161,6 +264,7 @@ export async function deleteMonthBudgetsAction(formData: FormData) {
 		.select("*")
 		.eq("user_id", user.id)
 		.eq("month", parsed.data.month)
+		.eq("currency_code", parsed.data.currencyCode)
 		.is("deleted_at", null);
 
 	if (fetchError) {
@@ -172,7 +276,8 @@ export async function deleteMonthBudgetsAction(formData: FormData) {
 		.from("budgets")
 		.update({ deleted_at: deletedAt, updated_at: deletedAt })
 		.eq("user_id", user.id)
-		.eq("month", parsed.data.month);
+		.eq("month", parsed.data.month)
+		.eq("currency_code", parsed.data.currencyCode);
 
 	if (deleteError) {
 		throw deleteError;
@@ -198,7 +303,7 @@ const thresholdsSchema = z.object({
 		z.object({
 			categoryId: z.string().uuid(),
 			levels: z.array(z.number().min(1).max(100)).max(5),
-		}),
+		})
 	),
 });
 
@@ -235,7 +340,7 @@ export async function saveBudgetThresholdsAction(formData: FormData) {
 			user_id: user.id,
 			budget_thresholds: sanitized as unknown as Json,
 		},
-		{ onConflict: "user_id" },
+		{ onConflict: "user_id" }
 	);
 
 	revalidatePath("/budgets");
